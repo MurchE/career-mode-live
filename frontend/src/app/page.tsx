@@ -4,11 +4,19 @@ import { useState } from 'react'
 import { CoachingPanel } from '@/components/coaching-panel'
 import { CharacterSheetMini } from '@/components/character-sheet-mini'
 import { Onboarding } from '@/components/onboarding'
+import { StoryWhiteboard } from '@/components/story-whiteboard'
+import CareerTrailer from '@/components/career-trailer'
 import { useCharacterStore } from '@/stores/character-store'
 
 export default function Home() {
-  const { characterSheet, isOnboarded } = useCharacterStore()
+  const { characterSheet, isOnboarded, starElements, confirmStarElement, messages, narrativeSynthesis } = useCharacterStore()
   const [showCharacterSheet, setShowCharacterSheet] = useState(true)
+  const [showWhiteboard, setShowWhiteboard] = useState(true)
+  const [showTrailer, setShowTrailer] = useState(false)
+
+  // Find the latest storyboard parts from messages
+  const storyboardMsg = [...messages].reverse().find((m) => m.type === 'storyboard')
+  const storyboardParts = storyboardMsg?.storyboardParts || []
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -25,12 +33,28 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-4">
           {isOnboarded && (
-            <button
-              onClick={() => setShowCharacterSheet(!showCharacterSheet)}
-              className="text-sm text-text-secondary hover:text-text-primary transition-colors"
-            >
-              {showCharacterSheet ? 'Hide' : 'Show'} Character Sheet
-            </button>
+            <>
+              <button
+                onClick={() => setShowWhiteboard(!showWhiteboard)}
+                className="text-sm text-text-secondary hover:text-text-primary transition-colors"
+              >
+                {showWhiteboard ? 'Hide' : 'Show'} Whiteboard
+              </button>
+              <button
+                onClick={() => setShowCharacterSheet(!showCharacterSheet)}
+                className="text-sm text-text-secondary hover:text-text-primary transition-colors"
+              >
+                {showCharacterSheet ? 'Hide' : 'Show'} Character Sheet
+              </button>
+              {storyboardParts.length > 0 && (
+                <button
+                  onClick={() => setShowTrailer(true)}
+                  className="px-3 py-1 text-xs font-mono rounded-full bg-[#7EE787]/15 text-[#7EE787] border border-[#7EE787]/30 hover:bg-[#7EE787]/25 transition-colors"
+                >
+                  Play Career Trailer
+                </button>
+              )}
+            </>
           )}
           <span className="text-xs text-text-muted">
             Powered by Gemini 2.5 Flash
@@ -43,8 +67,18 @@ export default function Home() {
         <Onboarding />
       ) : (
         <div className="flex-1 flex overflow-hidden">
+          {/* STAR Whiteboard — left sidebar */}
+          {showWhiteboard && starElements.length > 0 && (
+            <div className="w-[480px] border-r border-border overflow-y-auto flex-shrink-0">
+              <StoryWhiteboard
+                elements={starElements}
+                onConfirmElement={confirmStarElement}
+              />
+            </div>
+          )}
+
           {/* Coaching Panel — main area */}
-          <div className={`flex-1 flex flex-col ${showCharacterSheet ? 'mr-0' : ''}`}>
+          <div className="flex-1 flex flex-col">
             <CoachingPanel />
           </div>
 
@@ -55,6 +89,15 @@ export default function Home() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Career Trailer overlay */}
+      {showTrailer && storyboardParts.length > 0 && (
+        <CareerTrailer
+          parts={storyboardParts}
+          throughline={narrativeSynthesis?.throughline}
+          onClose={() => setShowTrailer(false)}
+        />
       )}
     </main>
   )

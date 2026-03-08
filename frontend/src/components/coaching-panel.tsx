@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { runPanel, synthesizeNarrative, getCoachTTS } from '@/lib/api'
+import { runPanel, synthesizeNarrative, getCoachTTS, generateStoryboard, extractStarElements } from '@/lib/api'
 import { useCharacterStore } from '@/stores/character-store'
 import { useVoice } from '@/hooks/use-voice'
 
@@ -33,6 +33,10 @@ export function CoachingPanel() {
     setLoading,
     setCoachingPhase,
     setNarrativeSynthesis,
+    setStoryboard,
+    starElements,
+    addStarElements,
+    confirmStarElement,
   } = useCharacterStore()
 
   const [input, setInput] = useState('')
@@ -40,6 +44,7 @@ export function CoachingPanel() {
   const [isStaggering, setIsStaggering] = useState(false)
   const [isSynthesizing, setIsSynthesizing] = useState(false)
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
+  const [isGeneratingStoryboard, setIsGeneratingStoryboard] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -57,9 +62,13 @@ export function CoachingPanel() {
   }, [displayedMessages])
 
   // Stagger coach responses for panel discussion feel
+  const lastProcessedRef = useRef(0)
+  const staggerTimersRef = useRef<NodeJS.Timeout[]>([])
   useEffect(() => {
-    if (messages.length > displayedMessages.length) {
-      const newMessages = messages.slice(displayedMessages.length)
+    if (messages.length > lastProcessedRef.current) {
+      const newMessages = messages.slice(lastProcessedRef.current)
+      lastProcessedRef.current = messages.length
+
       const coachMessages = newMessages.filter((m) => m.type === 'coach')
       const otherMessages = newMessages.filter((m) => m.type !== 'coach')
 
@@ -68,23 +77,32 @@ export function CoachingPanel() {
         setDisplayedMessages((prev) => [...prev, ...otherMessages])
       }
 
-      // Stagger coach messages
+      // Stagger coach messages — use functional updates to avoid stale closures
       if (coachMessages.length > 0) {
         setIsStaggering(true)
+        // Clear any existing timers
+        staggerTimersRef.current.forEach(clearTimeout)
+        staggerTimersRef.current = []
+
         coachMessages.forEach((msg, i) => {
-          setTimeout(
+          const timer = setTimeout(
             () => {
-              setDisplayedMessages((prev) => [...prev, msg])
+              setDisplayedMessages((prev) => {
+                // Deduplicate: only add if not already present
+                if (prev.some((m) => m.id === msg.id)) return prev
+                return [...prev, msg]
+              })
               if (i === coachMessages.length - 1) {
                 setIsStaggering(false)
               }
             },
             (i + 1) * 800,
           )
+          staggerTimersRef.current.push(timer)
         })
       }
     }
-  }, [messages, displayedMessages.length])
+  }, [messages])
 
   const handleSend = async () => {
     const text = input.trim()
@@ -113,6 +131,31 @@ export function CoachingPanel() {
       })
 
       addCoachResponses(result.responses)
+
+      // Extract STAR elements in background (non-blocking)
+      extractStarElements({
+        user_input: text,
+        conversation_history: conversationHistory,
+        existing_elements: starElements.map((e) => ({
+          category: e.category,
+          content: e.content,
+          coach_id: e.coach_id,
+          coach_name: e.coach_name,
+        })),
+      })
+        .then((starResult) => {
+          if (starResult.elements.length > 0) {
+            addStarElements(
+              starResult.elements.map((e) => ({
+                ...e,
+                id: `star-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                confirmed: false,
+                timestamp: Date.now(),
+              })),
+            )
+          }
+        })
+        .catch((err) => console.error('STAR extraction error (non-blocking):', err))
 
       if (result.suggested_phase) {
         setCoachingPhase(result.suggested_phase)
@@ -148,6 +191,26 @@ export function CoachingPanel() {
       console.error('Synthesis error:', err)
     } finally {
       setIsSynthesizing(false)
+      setLoading(false)
+    }
+  }
+
+  const handleGenerateStoryboard = async () => {
+    if (isGeneratingStoryboard || !narrativeSynthesis) return
+    setIsGeneratingStoryboard(true)
+    setLoading(true)
+
+    try {
+      const result = await generateStoryboard({
+        narrative: narrativeSynthesis,
+        conversation_history: conversationHistory,
+        character_sheet: characterSheet,
+      })
+      setStoryboard(result.parts)
+    } catch (err) {
+      console.error('Storyboard error:', err)
+    } finally {
+      setIsGeneratingStoryboard(false)
       setLoading(false)
     }
   }
@@ -214,15 +277,28 @@ export function CoachingPanel() {
             ))}
           </div>
 
-          {/* Synthesis button */}
-          {canSynthesize && (
-            <button
-              onClick={handleSynthesize}
-              className="px-3 py-1 text-xs font-mono rounded-full bg-[#F0883E]/15 text-[#F0883E] border border-[#F0883E]/30 hover:bg-[#F0883E]/25 transition-colors"
-            >
-              Synthesize Throughline
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Synthesis button */}
+            {canSynthesize && (
+              <button
+                onClick={handleSynthesize}
+                className="px-3 py-1 text-xs font-mono rounded-full bg-[#F0883E]/15 text-[#F0883E] border border-[#F0883E]/30 hover:bg-[#F0883E]/25 transition-colors"
+              >
+                Synthesize Throughline
+              </button>
+            )}
+
+            {/* Storyboard button — appears after synthesis */}
+            {narrativeSynthesis && !isGeneratingStoryboard && (
+              <button
+                onClick={handleGenerateStoryboard}
+                disabled={isLoading}
+                className="px-3 py-1 text-xs font-mono rounded-full bg-[#7EE787]/15 text-[#7EE787] border border-[#7EE787]/30 hover:bg-[#7EE787]/25 transition-colors disabled:opacity-30"
+              >
+                Generate Career Story
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -344,6 +420,44 @@ export function CoachingPanel() {
                   )}
                 </div>
               </div>
+            ) : msg.type === 'storyboard' ? (
+              /* Career Storyboard — interleaved text + images */
+              <div className="max-w-3xl mx-auto">
+                <div className="rounded-xl border-2 border-[#7EE787]/40 bg-[#7EE787]/05 p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="w-7 h-7 rounded-full bg-[#7EE787]/20 flex items-center justify-center text-[#7EE787] font-bold text-sm">
+                      S
+                    </div>
+                    <span className="text-sm font-semibold text-[#7EE787]">
+                      Career Storyboard
+                    </span>
+                    <span className="text-xs text-text-muted ml-auto font-mono">
+                      powered by Gemini interleaved output
+                    </span>
+                  </div>
+
+                  <div className="space-y-6">
+                    {msg.storyboardParts?.map((part, i) => (
+                      <div key={i}>
+                        {part.type === 'text' && part.content && (
+                          <p className="text-text-primary text-sm leading-relaxed whitespace-pre-wrap">
+                            {part.content}
+                          </p>
+                        )}
+                        {part.type === 'image' && part.data && (
+                          <div className="rounded-lg overflow-hidden border border-border">
+                            <img
+                              src={`data:${part.mime_type || 'image/png'};base64,${part.data}`}
+                              alt={`Career story illustration ${i + 1}`}
+                              className="w-full h-auto"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             ) : (
               /* Coach message */
               <div className="max-w-2xl">
@@ -428,7 +542,7 @@ export function CoachingPanel() {
               </div>
             </div>
             <div className="text-sm text-text-muted pt-2 font-mono">
-              {isSynthesizing ? 'Synthesizing career throughline...' : 'Panel is conferring...'}
+              {isGeneratingStoryboard ? 'Creating your career storyboard...' : isSynthesizing ? 'Synthesizing career throughline...' : 'Panel is conferring...'}
             </div>
           </div>
         )}

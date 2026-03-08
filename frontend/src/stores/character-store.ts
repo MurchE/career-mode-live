@@ -1,15 +1,17 @@
 import { create } from 'zustand'
-import type { CharacterSheet, ConversationEntry, CoachResponse, NarrativeResponse } from '@/lib/api'
+import type { CharacterSheet, ConversationEntry, CoachResponse, NarrativeResponse, StoryboardPart } from '@/lib/api'
+import type { StarElement } from '@/components/story-whiteboard'
 
 interface PanelMessage {
   id: string
-  type: 'user' | 'coach' | 'system' | 'narrative'
+  type: 'user' | 'coach' | 'system' | 'narrative' | 'storyboard'
   content: string
   coachId?: string
   coachName?: string
   color?: string
   timestamp: number
   narrative?: NarrativeResponse
+  storyboardParts?: StoryboardPart[]
 }
 
 interface CharacterState {
@@ -26,6 +28,9 @@ interface CharacterState {
   roundCount: number
   narrativeSynthesis: NarrativeResponse | null
 
+  // STAR Whiteboard
+  starElements: StarElement[]
+
   // Actions
   setOnboarded: (sheet: CharacterSheet, flatMirror: string) => void
   resetOnboarding: () => void
@@ -35,6 +40,9 @@ interface CharacterState {
   setLoading: (loading: boolean) => void
   updateCharacterSheet: (sheet: CharacterSheet) => void
   setNarrativeSynthesis: (narrative: NarrativeResponse) => void
+  setStoryboard: (parts: StoryboardPart[]) => void
+  addStarElements: (elements: StarElement[]) => void
+  confirmStarElement: (id: string) => void
 }
 
 export const useCharacterStore = create<CharacterState>((set, get) => ({
@@ -47,6 +55,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   isLoading: false,
   roundCount: 0,
   narrativeSynthesis: null,
+  starElements: [],
 
   setOnboarded: (sheet, flatMirror) =>
     set({
@@ -78,6 +87,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       isLoading: false,
       roundCount: 0,
       narrativeSynthesis: null,
+      starElements: [],
     }),
 
   setCoachingPhase: (phase) => set({ coachingPhase: phase }),
@@ -143,5 +153,36 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
           narrative,
         },
       ],
+    })),
+
+  setStoryboard: (parts) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: `storyboard-${Date.now()}`,
+          type: 'storyboard' as const,
+          content: 'Career Storyboard',
+          coachName: 'Creative Director',
+          color: '#7EE787',
+          timestamp: Date.now(),
+          storyboardParts: parts,
+        },
+      ],
+    })),
+
+  addStarElements: (elements) =>
+    set((state) => {
+      const existingIds = new Set(state.starElements.map((e) => e.id))
+      const newElements = elements.filter((e) => !existingIds.has(e.id))
+      if (newElements.length === 0) return state
+      return { starElements: [...state.starElements, ...newElements] }
+    }),
+
+  confirmStarElement: (id) =>
+    set((state) => ({
+      starElements: state.starElements.map((e) =>
+        e.id === id ? { ...e, confirmed: true } : e,
+      ),
     })),
 }))

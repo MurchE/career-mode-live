@@ -101,6 +101,28 @@ export async function synthesizeNarrative(req: NarrativeRequest): Promise<Narrat
   return apiPost<NarrativeResponse>('/api/coaching/synthesize', req)
 }
 
+// Career Storyboard — interleaved text + images (Creative Storyteller deliverable)
+interface StoryboardRequest {
+  narrative: NarrativeResponse
+  conversation_history: ConversationEntry[]
+  character_sheet: CharacterSheet | null
+}
+
+interface StoryboardPart {
+  type: 'text' | 'image'
+  content?: string
+  data?: string
+  mime_type?: string
+}
+
+interface StoryboardResponse {
+  parts: StoryboardPart[]
+}
+
+export async function generateStoryboard(req: StoryboardRequest): Promise<StoryboardResponse> {
+  return apiPost<StoryboardResponse>('/api/coaching/storyboard', req)
+}
+
 // Text-to-Speech — returns audio blob
 export async function getCoachTTS(text: string, coachId: string): Promise<Blob | null> {
   try {
@@ -116,6 +138,30 @@ export async function getCoachTTS(text: string, coachId: string): Promise<Blob |
   }
 }
 
+// STAR Element Extraction — live whiteboard
+interface StarExtractionRequest {
+  user_input: string
+  conversation_history: ConversationEntry[]
+  existing_elements: StarElementRaw[]
+}
+
+interface StarElementRaw {
+  category: 'situation' | 'task' | 'action' | 'result'
+  content: string
+  coach_id: string
+  coach_name: string
+}
+
+interface StarExtractionResponse {
+  elements: StarElementRaw[]
+}
+
+export async function extractStarElements(
+  req: StarExtractionRequest,
+): Promise<StarExtractionResponse> {
+  return apiPost<StarExtractionResponse>('/api/coaching/extract-star', req)
+}
+
 export type {
   CoachResponse,
   PanelResponse,
@@ -125,4 +171,9 @@ export type {
   PanelRequest,
   ConversationEntry,
   NarrativeResponse,
+  StoryboardPart,
+  StoryboardResponse,
+  StarExtractionRequest,
+  StarElementRaw,
+  StarExtractionResponse,
 }

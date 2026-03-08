@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from app.coaching_panel import run_panel, run_flat_mirror, run_provocation, run_narrative_synthesis
+from app.coaching_panel import run_panel, run_flat_mirror, run_provocation, run_narrative_synthesis, run_career_storyboard, extract_star_elements
 from app.skill_analyzer import analyze_skills_from_text
 from app.resume_parser import parse_resume_text
 from app.gemini_service import get_client
@@ -264,7 +264,7 @@ async def synthesize_narrative(req: NarrativeRequest):
 
 
 # ---------------------------------------------------------------------------
-# Text-to-Speech — distinct voices for each coach
+# Text-to-Speech — Gemini native TTS with distinct voices per coach
 # ---------------------------------------------------------------------------
 
 class TTSRequest(BaseModel):
@@ -272,52 +272,108 @@ class TTSRequest(BaseModel):
     coach_id: str = "viktor"  # chad | reeves | viktor
 
 
-# Coach-to-voice mapping for Google Cloud TTS
-COACH_VOICES = {
-    "chad": {"name": "en-US-Neural2-J", "pitch": 0.0, "rate": 1.1},
-    "reeves": {"name": "en-GB-Neural2-B", "pitch": -1.0, "rate": 0.95},
-    "viktor": {"name": "en-US-Neural2-D", "pitch": -2.0, "rate": 1.0},
-}
-
-
 @app.post("/api/tts")
 async def text_to_speech(req: TTSRequest):
-    """Convert coach response to speech using Google Cloud TTS.
+    """Convert coach response to speech using Gemini native TTS.
 
-    Each coach gets a distinct voice — Chad is casual US, Reeves is measured
-    British, Viktor is precise and deep.
+    Each coach gets a distinct Gemini voice — Chad (Enceladus/breathy),
+    Reeves (Kore/firm), Viktor (Puck/upbeat). This uses Gemini's native
+    audio generation, not a separate Cloud TTS service.
     """
+    from fastapi.responses import Response
+    from app.gemini_service import generate_speech, COACH_TTS_VOICES
+
     try:
-        from google.cloud import texttospeech
-        from fastapi.responses import Response
-
-        client = texttospeech.TextToSpeechClient()
-        voice_config = COACH_VOICES.get(req.coach_id, COACH_VOICES["viktor"])
-
-        synthesis_input = texttospeech.SynthesisInput(text=req.text)
-        voice = texttospeech.VoiceSelectionParams(
-            language_code=voice_config["name"][:5],  # en-US or en-GB
-            name=voice_config["name"],
-        )
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=voice_config["rate"],
-            pitch=voice_config["pitch"],
-        )
-
-        response = client.synthesize_speech(
-            input=synthesis_input, voice=voice, audio_config=audio_config
-        )
+        voice = COACH_TTS_VOICES.get(req.coach_id, "Kore")
+        wav_bytes = await generate_speech(text=req.text, voice_name=voice)
 
         return Response(
-            content=response.audio_content,
-            media_type="audio/mpeg",
-            headers={"Content-Disposition": f"inline; filename={req.coach_id}_response.mp3"},
-        )
-    except ImportError:
-        raise HTTPException(
-            status_code=501,
-            detail="Google Cloud TTS not installed. Install with: uv add google-cloud-texttospeech"
+            content=wav_bytes,
+            media_type="audio/wav",
+            headers={"Content-Disposition": f"inline; filename={req.coach_id}_response.wav"},
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS error: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# STAR Element Extraction — Live Whiteboard
+# ---------------------------------------------------------------------------
+
+class StarExtractionRequest(BaseModel):
+    user_input: str
+    conversation_history: list[dict] = []
+    existing_elements: list[dict] = []
+
+
+class StarElementResponse(BaseModel):
+    category: str
+    content: str
+    coach_id: str
+    coach_name: str
+
+
+class StarExtractionResponse(BaseModel):
+    elements: list[StarElementResponse]
+
+
+@app.post("/api/coaching/extract-star", response_model=StarExtractionResponse)
+async def extract_star(req: StarExtractionRequest):
+    """Extract STAR framework elements from the coaching conversation.
+
+    Called after each coaching round to populate the live whiteboard.
+    Returns only NEW elements not already present in existing_elements.
+    """
+    try:
+        elements = await extract_star_elements(
+            user_input=req.user_input,
+            conversation_history=req.conversation_history,
+            existing_elements=req.existing_elements,
+        )
+        return StarExtractionResponse(
+            elements=[StarElementResponse(**el) for el in elements]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"STAR extraction error: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Career Storyboard — interleaved text + image generation (Creative Storyteller)
+# ---------------------------------------------------------------------------
+
+class StoryboardRequest(BaseModel):
+    narrative: dict  # from /api/coaching/synthesize
+    conversation_history: list[dict]
+    character_sheet: Optional[dict] = None
+
+
+class StoryboardPart(BaseModel):
+    type: str  # "text" or "image"
+    content: Optional[str] = None  # for text
+    data: Optional[str] = None  # base64 for images
+    mime_type: Optional[str] = None  # for images
+
+
+class StoryboardResponse(BaseModel):
+    parts: list[StoryboardPart]
+
+
+@app.post("/api/coaching/storyboard", response_model=StoryboardResponse)
+async def generate_storyboard(req: StoryboardRequest):
+    """Generate a visual career storyboard with interleaved text and images.
+
+    This is the core Creative Storyteller capability — Gemini produces
+    text narrative and AI-generated illustrations in a single output stream.
+    Uses gemini-2.5-flash-image with response_modalities=['TEXT', 'IMAGE'].
+    """
+    try:
+        parts = await run_career_storyboard(
+            narrative=req.narrative,
+            conversation_history=req.conversation_history,
+            character_sheet=req.character_sheet,
+        )
+        return StoryboardResponse(
+            parts=[StoryboardPart(**p) for p in parts]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Storyboard error: {str(e)}")
