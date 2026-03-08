@@ -56,6 +56,12 @@ export default function Home() {
               )}
             </>
           )}
+          <a
+            href="/whiteboard"
+            className="px-3 py-1 text-xs font-mono rounded-full bg-[#58A6FF]/15 text-[#58A6FF] border border-[#58A6FF]/30 hover:bg-[#58A6FF]/25 transition-colors"
+          >
+            DrawTogether
+          </a>
           <span className="text-xs text-text-muted">
             Powered by Gemini 2.5 Flash
           </span>

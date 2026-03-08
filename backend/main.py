@@ -358,6 +358,63 @@ class StoryboardResponse(BaseModel):
     parts: list[StoryboardPart]
 
 
+# ---------------------------------------------------------------------------
+# Collaborative Whiteboard — AI Canvas Analysis (DrawTogether)
+# ---------------------------------------------------------------------------
+
+class WhiteboardAnalyzeRequest(BaseModel):
+    image_base64: str
+    canvas_width: int = 1200
+    canvas_height: int = 800
+    context: str = "career_coaching"
+    existing_shapes: int = 0
+
+
+@app.post("/api/whiteboard/analyze")
+async def whiteboard_analyze(req: WhiteboardAnalyzeRequest):
+    """Analyze canvas screenshot and return AI drawing commands.
+
+    The AI sees what the user has drawn, understands it, and responds
+    with structured drawing commands (circles, arrows, text, highlights)
+    that the frontend renders with hand-drawn animated strokes.
+    """
+    from app.whiteboard_service import analyze_canvas
+
+    try:
+        result = await analyze_canvas(
+            image_base64=req.image_base64,
+            canvas_width=req.canvas_width,
+            canvas_height=req.canvas_height,
+            context=req.context,
+            existing_shapes=req.existing_shapes,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Whiteboard analysis error: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Gemini Live API Key — for DrawTogether client-side WebSocket
+# ---------------------------------------------------------------------------
+
+@app.get("/api/live/config")
+async def live_config():
+    """Return Gemini API key for client-side Live API WebSocket.
+
+    In production this would use short-lived tokens or a WebSocket proxy.
+    For the hackathon demo, we expose the key through the backend so it's
+    not hardcoded in the frontend bundle.
+    """
+    key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="No Gemini API key configured")
+    return {
+        "api_key": key,
+        "model": "models/gemini-2.0-flash-live-001",
+        "voices": ["Kore", "Puck", "Charon", "Fenrir", "Aoede"],
+    }
+
+
 @app.post("/api/coaching/storyboard", response_model=StoryboardResponse)
 async def generate_storyboard(req: StoryboardRequest):
     """Generate a visual career storyboard with interleaved text and images.

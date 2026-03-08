@@ -162,6 +162,58 @@ export async function extractStarElements(
   return apiPost<StarExtractionResponse>('/api/coaching/extract-star', req)
 }
 
+// Whiteboard — AI canvas analysis
+interface WhiteboardAnalyzeRequest {
+  image_base64: string
+  canvas_width: number
+  canvas_height: number
+  context?: string
+  existing_shapes?: number
+}
+
+interface WhiteboardAnalyzeResponse {
+  shapes: Array<{
+    type: string
+    x: number
+    y: number
+    width?: number
+    height?: number
+    radius?: number
+    toX?: number
+    toY?: number
+    content?: string
+    fontSize?: number
+    color: string
+    strokeWidth?: number
+    fill?: string
+    label?: string
+  }>
+  voice_response: string
+}
+
+export async function analyzeWhiteboard(
+  req: WhiteboardAnalyzeRequest,
+): Promise<WhiteboardAnalyzeResponse> {
+  return apiPost<WhiteboardAnalyzeResponse>('/api/whiteboard/analyze', req)
+}
+
+// Live API config — get Gemini API key for client-side WebSocket
+interface LiveConfig {
+  api_key: string
+  model: string
+  voices: string[]
+}
+
+export async function getLiveConfig(): Promise<LiveConfig | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/live/config`)
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
 export type {
   CoachResponse,
   PanelResponse,
