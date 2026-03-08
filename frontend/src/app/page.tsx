@@ -33,7 +33,7 @@ export default function Home() {
             </button>
           )}
           <span className="text-xs text-text-muted">
-            Powered by Gemini 2.0 Flash
+            Powered by Gemini 2.5 Flash
           </span>
         </div>
       </header>
