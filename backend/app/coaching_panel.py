@@ -38,10 +38,10 @@ def _build_context_block(
             parts.append(f"Class: {cls}")
         parts.append("")
 
-    # Recent conversation history (last 6 exchanges)
+    # Recent conversation history (last 8 exchanges to keep context manageable)
     if conversation_history:
         parts.append("=== RECENT CONVERSATION ===")
-        for entry in conversation_history[-6:]:
+        for entry in conversation_history[-8:]:
             role = entry.get("role", "user")
             content = entry.get("content", "")
             speaker = entry.get("coach_name", role.upper())
