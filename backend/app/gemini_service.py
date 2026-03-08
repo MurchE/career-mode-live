@@ -58,6 +58,36 @@ async def generate(
     return response.text or ""
 
 
+async def generate_json(
+    prompt: str,
+    system_instruction: str | None = None,
+    temperature: float = 0.7,
+    max_tokens: int = 500,
+) -> str:
+    """Generate a JSON response from Gemini using JSON mode.
+
+    Uses response_mime_type to force valid JSON output.
+    """
+    client = get_client()
+
+    config = types.GenerateContentConfig(
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
+        response_mime_type="application/json",
+    )
+    if system_instruction:
+        config.system_instruction = system_instruction
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=prompt,
+        config=config,
+    )
+
+    return response.text or "{}"
+
+
 async def generate_with_history(
     messages: list[dict],
     system_instruction: str | None = None,

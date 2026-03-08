@@ -12,7 +12,7 @@ Flow:
 import json
 from typing import Optional
 
-from app.gemini_service import generate, generate_with_history
+from app.gemini_service import generate, generate_json, generate_with_history
 from app.personas import PANEL_COACHES, CoachPersona
 
 
@@ -245,22 +245,16 @@ Return a JSON object with these fields:
 
 Return ONLY valid JSON, no markdown fences."""
 
-    response_text = await generate(
+    response_text = await generate_json(
         prompt=prompt,
-        system_instruction="You are an expert career narrative analyst. Return only valid JSON.",
+        system_instruction="You are an expert career narrative analyst. Return a JSON object with throughline, evidence, reframe, and positioning_statement fields.",
         temperature=0.7,
         max_tokens=500,
     )
 
-    # Parse JSON response
     try:
-        cleaned = response_text.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1]
-            if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
-        return json.loads(cleaned)
-    except (json.JSONDecodeError, IndexError):
+        return json.loads(response_text)
+    except json.JSONDecodeError:
         return {
             "throughline": response_text.strip(),
             "evidence": [],
