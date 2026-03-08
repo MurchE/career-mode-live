@@ -124,19 +124,27 @@ async def run_flat_mirror(resume_text: str) -> str:
     pushing back with "that's not what I actually did."
     """
     prompt = f"""Based on this resume/background, write a short (3-4 sentence) career summary
-that is DELIBERATELY generic and corporate-sounding. Use buzzwords, vague language, and
-make it sound like it could describe anyone in this field. This is intentional — we want
-the user to react and push back.
+that is DELIBERATELY generic and underselling. Use corporate buzzwords, strip out any
+specifics, replace concrete achievements with vague language, and make it sound like it
+could describe anyone in this field. This is intentional — we want the user to react
+with "that's not what I did at all" so we can probe for the real story.
+
+Rules:
+- Replace specific projects with "various initiatives"
+- Replace concrete results with "drove positive outcomes"
+- Make leadership sound generic ("collaborated cross-functionally")
+- Strip personality and uniqueness — make it beige
 
 Background:
 {resume_text[:3000]}
 
-Write the flat, generic summary now. Make it sound like a bad LinkedIn "About" section."""
+Write the flat, generic summary now. Make it sound like a bad LinkedIn "About" section
+written by someone who has never met the person."""
 
     return await generate(
         prompt=prompt,
-        system_instruction="You generate deliberately generic, corporate-sounding career summaries. Be boring on purpose.",
-        temperature=0.5,
+        system_instruction="You generate deliberately generic, corporate-sounding career summaries that strip away all specificity and personality. Be boring on purpose. Your goal is to provoke the person into correcting you.",
+        temperature=0.6,
         max_tokens=200,
     )
 
@@ -155,11 +163,14 @@ async def run_provocation(
     # Override system prompts for provocation mode
     provocation_addendum = """
 
-PROVOCATION MODE: The user just pushed back on a generic career summary.
-Your job is to probe DEEPER. Ask the question that will surface the REAL story.
+PROVOCATION MODE: The user just pushed back on a deliberately generic career summary.
+Their pushback is THE SIGNAL — the emotion, the specifics they correct, the stories they
+tell to prove the summary wrong. Your job is to seize on that signal and probe DEEPER.
+Ask the question that will surface the REAL story.
 Focus on specifics: numbers, names, moments of crisis, the thing they're proud of
 that no job description would capture. Be provocative but constructive.
-Keep it to 1-2 sentences — sharp, targeted."""
+Keep it to 2-3 sentences — sharp, targeted.
+If the user mentions something impressive casually, CATCH IT and push for the full story."""
 
     responses = []
     for coach in PANEL_COACHES:

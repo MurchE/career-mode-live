@@ -35,6 +35,14 @@ def _extract_name(text: str) -> str:
         if line and len(line.split()) <= 4 and not any(c.isdigit() for c in line):
             if "@" not in line and "http" not in line.lower():
                 return line
+
+    # Try extracting name from "Name, Title at Company" pattern
+    first_line = lines[0].strip() if lines else ""
+    if "," in first_line:
+        candidate = first_line.split(",")[0].strip()
+        if candidate and len(candidate.split()) <= 3 and not any(c.isdigit() for c in candidate):
+            return candidate
+
     return "Unknown"
 
 
