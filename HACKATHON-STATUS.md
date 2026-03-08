@@ -7,12 +7,12 @@
 
 ## Current State (March 7, 2026)
 
-### Working
-- Backend: FastAPI running with Gemini 2.5 Flash integration
+### Working (verified 2026-03-07)
+- Backend: FastAPI running with Gemini 2.5 Flash integration (thinking disabled)
 - 3-coach panel: Chad, Dr. Reeves, Viktor — sequential orchestration, each builds on prior
-- Flat mirror: Deliberately generic career summary generation
-- Provocation mode: Panel probes user's pushback
-- Narrative synthesis: Career throughline extraction (JSON structured output)
+- Flat mirror: Deliberately generic career summary generation (enhanced to actively undersell)
+- Provocation mode: Panel probes user's pushback with understatement detection
+- Narrative synthesis: Career throughline extraction using Gemini JSON mode
 - Frontend: Next.js with onboarding, coaching panel, character sheet
 - Flat mirror displayed as formal "Career Summary Report" card (visually distinct)
 - Narrative synthesis card with throughline, evidence, reframe, positioning statement
@@ -21,6 +21,10 @@
 - TTS endpoint: Built with Cloud TTS (3 distinct Neural2 voices per coach)
 - Staggered message rendering with send-lock during stagger
 - Round counter for tracking coaching depth
+- Enhanced persona prompts with inter-coach debate and probe type patterns
+- Demo script created (DEMO-SCRIPT.md)
+- Gemini JSON mode for reliable structured output (narrative synthesis)
+- Resume parser improvements (name extraction, title extraction)
 
 ### Needs Human Action (Murch)
 
@@ -74,11 +78,11 @@ All three debate agents (Product Strategist, Technical Architect, Hackathon Judg
 
 ## Remaining Build Work (Agent Can Do)
 
+- [x] ~~Dockerfile + docker-compose updates for Cloud TTS credentials~~
+- [x] ~~Add conversation history trimming~~ (window set to 8 exchanges)
 - [ ] Polish error handling (graceful fallback if Gemini API is slow/down)
 - [ ] Add "retry" button if panel response fails
 - [ ] Create architecture diagram image (Excalidraw or draw.io PNG)
-- [ ] Dockerfile + docker-compose updates for Cloud TTS credentials
-- [ ] Add conversation history trimming (prevent token limit after 10+ rounds)
 - [ ] Test and polish responsive layout for demo recording
 - [ ] Backup demo: record a screen capture of a successful session
 
