@@ -45,6 +45,15 @@ def _extract_title(text: str) -> str:
     if match:
         return match.group(1).strip()
 
+    # Try common title patterns: "Senior Software Engineer at Google"
+    title_pattern = r"(?:^|,\s*)((?:Senior\s+|Staff\s+|Lead\s+|Principal\s+|Junior\s+|Chief\s+|VP\s+of\s+)?(?:Software|Data|ML|AI|DevOps|Cloud|Full[\s-]?Stack|Front[\s-]?End|Back[\s-]?End|Platform|Infrastructure|Site Reliability|Product|Engineering|Technical|Solutions|Systems)?\s*(?:Engineer|Developer|Manager|Designer|Analyst|Architect|Scientist|Consultant|Director|Lead|Officer|Founder)(?:\s+\w+)?)"
+    match = re.search(title_pattern, text, re.IGNORECASE)
+    if match:
+        title = match.group(1).strip()
+        # Cap at reasonable length
+        if len(title) < 60:
+            return title
+
     title_keywords = [
         "engineer", "developer", "manager", "designer", "analyst",
         "architect", "lead", "director", "scientist", "consultant",
@@ -53,9 +62,11 @@ def _extract_title(text: str) -> str:
     lines = text.split("\n")
     for line in lines[:10]:
         line_lower = line.lower()
-        for kw in title_keywords:
-            if kw in line_lower:
-                return line.strip()
+        # Only return short lines that contain a title keyword
+        if len(line.strip()) < 60:
+            for kw in title_keywords:
+                if kw in line_lower:
+                    return line.strip()
     return "Professional"
 
 

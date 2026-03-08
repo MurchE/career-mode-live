@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { runPanel } from '@/lib/api'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { runPanel, synthesizeNarrative, getCoachTTS } from '@/lib/api'
 import { useCharacterStore } from '@/stores/character-store'
 import { useVoice } from '@/hooks/use-voice'
 
@@ -11,23 +11,38 @@ const COACH_META: Record<string, { icon: string; title: string }> = {
   viktor: { icon: 'V', title: 'Tech Savant' },
 }
 
+const PHASE_LABELS: Record<string, string> = {
+  flat_mirror: 'Career Mirror',
+  provocation: 'Provocation',
+  free_discussion: 'Deep Dive',
+  synthesis: 'Synthesis',
+}
+
 export function CoachingPanel() {
   const {
     messages,
     conversationHistory,
     characterSheet,
+    flatMirror,
     coachingPhase,
     isLoading,
+    roundCount,
+    narrativeSynthesis,
     addUserMessage,
     addCoachResponses,
     setLoading,
     setCoachingPhase,
+    setNarrativeSynthesis,
   } = useCharacterStore()
 
   const [input, setInput] = useState('')
   const [displayedMessages, setDisplayedMessages] = useState(messages)
+  const [isStaggering, setIsStaggering] = useState(false)
+  const [isSynthesizing, setIsSynthesizing] = useState(false)
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   // Voice hook
   const { isListening, isSupported, interimTranscript, toggleListening, speak, isSpeaking, cancelSpeech } = useVoice({
@@ -45,42 +60,46 @@ export function CoachingPanel() {
   useEffect(() => {
     if (messages.length > displayedMessages.length) {
       const newMessages = messages.slice(displayedMessages.length)
-
-      // If they're coach messages, stagger them
       const coachMessages = newMessages.filter((m) => m.type === 'coach')
-      const userMessages = newMessages.filter((m) => m.type === 'user')
+      const otherMessages = newMessages.filter((m) => m.type !== 'coach')
 
-      // Show user messages immediately
-      if (userMessages.length > 0) {
-        setDisplayedMessages((prev) => [...prev, ...userMessages])
+      // Show non-coach messages immediately
+      if (otherMessages.length > 0) {
+        setDisplayedMessages((prev) => [...prev, ...otherMessages])
       }
 
       // Stagger coach messages
-      coachMessages.forEach((msg, i) => {
-        setTimeout(
-          () => {
-            setDisplayedMessages((prev) => [...prev, msg])
-          },
-          (i + 1) * 800,
-        )
-      })
+      if (coachMessages.length > 0) {
+        setIsStaggering(true)
+        coachMessages.forEach((msg, i) => {
+          setTimeout(
+            () => {
+              setDisplayedMessages((prev) => [...prev, msg])
+              if (i === coachMessages.length - 1) {
+                setIsStaggering(false)
+              }
+            },
+            (i + 1) * 800,
+          )
+        })
+      }
     }
   }, [messages, displayedMessages.length])
 
   const handleSend = async () => {
     const text = input.trim()
-    if (!text || isLoading) return
+    if (!text || isLoading || isStaggering) return
 
     setInput('')
     addUserMessage(text)
     setLoading(true)
 
-    // Determine phase — after first user message, switch to provocation
+    // Determine phase
     let phase = coachingPhase
     if (coachingPhase === 'flat_mirror') {
       phase = 'provocation'
       setCoachingPhase('provocation')
-    } else if (conversationHistory.length > 6) {
+    } else if (conversationHistory.length > 8) {
       phase = 'free_discussion'
       setCoachingPhase('free_discussion')
     }
@@ -104,7 +123,7 @@ export function CoachingPanel() {
         {
           coach_id: 'system',
           coach_name: 'System',
-          response: `Connection error. Make sure the backend is running on port 8000.`,
+          response: 'Connection error. Make sure the backend is running on port 8000.',
           color: '#FF7B72',
         },
       ])
@@ -113,6 +132,56 @@ export function CoachingPanel() {
     }
   }
 
+  const handleSynthesize = async () => {
+    if (isSynthesizing || conversationHistory.length < 4) return
+    setIsSynthesizing(true)
+    setLoading(true)
+
+    try {
+      const result = await synthesizeNarrative({
+        conversation_history: conversationHistory,
+        character_sheet: characterSheet,
+      })
+      setNarrativeSynthesis(result)
+      setCoachingPhase('synthesis')
+    } catch (err) {
+      console.error('Synthesis error:', err)
+    } finally {
+      setIsSynthesizing(false)
+      setLoading(false)
+    }
+  }
+
+  const handlePlayTTS = useCallback(async (text: string, coachId: string) => {
+    if (playingAudio === coachId) {
+      audioRef.current?.pause()
+      setPlayingAudio(null)
+      return
+    }
+
+    setPlayingAudio(coachId)
+    const blob = await getCoachTTS(text, coachId)
+    if (blob) {
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => {
+        setPlayingAudio(null)
+        URL.revokeObjectURL(url)
+      }
+      audio.onerror = () => {
+        setPlayingAudio(null)
+        // Fallback to browser TTS
+        speak(text)
+      }
+      audio.play()
+    } else {
+      // Fallback to browser TTS
+      speak(text)
+      setPlayingAudio(null)
+    }
+  }, [playingAudio, speak])
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -120,55 +189,85 @@ export function CoachingPanel() {
     }
   }
 
-  const handleSpeak = (text: string) => {
-    if (isSpeaking) {
-      cancelSpeech()
-    } else {
-      speak(text)
-    }
-  }
+  const canSynthesize = roundCount >= 2 && !narrativeSynthesis && !isLoading
 
   return (
     <div className="flex flex-col h-full">
       {/* Phase indicator */}
       <div className="px-6 py-2 border-b border-border bg-bg-secondary/50">
-        <div className="flex items-center gap-4">
-          {['flat_mirror', 'provocation', 'free_discussion'].map((phase) => (
-            <div
-              key={phase}
-              className={`flex items-center gap-2 text-xs font-mono ${
-                coachingPhase === phase ? 'text-accent-blue' : 'text-text-muted'
-              }`}
-            >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {['flat_mirror', 'provocation', 'free_discussion', 'synthesis'].map((phase) => (
               <div
-                className={`w-2 h-2 rounded-full ${
-                  coachingPhase === phase ? 'bg-accent-blue' : 'bg-bg-tertiary'
+                key={phase}
+                className={`flex items-center gap-2 text-xs font-mono transition-colors ${
+                  coachingPhase === phase ? 'text-accent-blue' : 'text-text-muted'
                 }`}
-              />
-              {phase.replace('_', ' ')}
-            </div>
-          ))}
+              >
+                <div
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    coachingPhase === phase ? 'bg-accent-blue' : 'bg-bg-tertiary'
+                  }`}
+                />
+                {PHASE_LABELS[phase] || phase}
+              </div>
+            ))}
+          </div>
+
+          {/* Synthesis button */}
+          {canSynthesize && (
+            <button
+              onClick={handleSynthesize}
+              className="px-3 py-1 text-xs font-mono rounded-full bg-[#F0883E]/15 text-[#F0883E] border border-[#F0883E]/30 hover:bg-[#F0883E]/25 transition-colors"
+            >
+              Synthesize Throughline
+            </button>
+          )}
         </div>
       </div>
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {/* Intro prompt if no messages yet beyond flat mirror */}
-        {displayedMessages.length <= 1 && (
-          <div className="text-center py-8 space-y-3">
-            <p className="text-text-secondary text-sm">
-              The panel generated a generic summary of your career above.
-            </p>
-            <p className="text-text-primary font-medium">
-              What did they get wrong? Push back.
-            </p>
-            <p className="text-text-muted text-xs font-mono">
-              (This is intentional -- the &quot;flat mirror&quot; is designed to provoke you.)
-            </p>
+        {/* Flat Mirror Card — visually distinct from chat */}
+        {flatMirror && displayedMessages.length > 0 && (
+          <div className="max-w-2xl mx-auto mb-6">
+            <div className="rounded-xl border-2 border-[#58A6FF]/30 bg-[#58A6FF]/05 p-6 relative overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded bg-[#58A6FF]/20 flex items-center justify-center">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#58A6FF" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                  </svg>
+                </div>
+                <span className="text-xs font-mono text-[#58A6FF] uppercase tracking-wider">
+                  Career Summary Report
+                </span>
+                <span className="text-xs text-text-muted ml-auto font-mono">
+                  auto-generated
+                </span>
+              </div>
+
+              {/* The deliberately generic summary */}
+              <p className="text-text-primary text-sm leading-relaxed italic">
+                &ldquo;{flatMirror}&rdquo;
+              </p>
+
+              {/* Provocation prompt */}
+              <div className="mt-4 pt-3 border-t border-[#58A6FF]/20">
+                <p className="text-xs text-text-muted">
+                  This summary was <span className="text-[#F0883E]">deliberately generic</span>.
+                  The panel wants to know: <span className="text-text-primary font-medium">what did they get wrong?</span>
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
-        {displayedMessages.map((msg) => (
+        {/* Messages */}
+        {displayedMessages.filter(m => m.id !== 'flat-mirror').map((msg) => (
           <div
             key={msg.id}
             className={`speech-bubble-enter ${
@@ -183,6 +282,66 @@ export function CoachingPanel() {
                 </div>
                 <div className="text-right mt-1">
                   <span className="text-xs text-text-muted">You</span>
+                </div>
+              </div>
+            ) : msg.type === 'narrative' ? (
+              /* Narrative synthesis card */
+              <div className="max-w-2xl mx-auto">
+                <div className="rounded-xl border-2 border-[#F0883E]/40 bg-[#F0883E]/05 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-full bg-[#F0883E]/20 flex items-center justify-center text-[#F0883E] font-bold text-sm">
+                      T
+                    </div>
+                    <span className="text-sm font-semibold text-[#F0883E]">
+                      Career Throughline
+                    </span>
+                    <span className="text-xs text-text-muted ml-auto font-mono">
+                      panel synthesis
+                    </span>
+                  </div>
+
+                  {msg.narrative && (
+                    <>
+                      {/* Throughline */}
+                      <p className="text-text-primary text-base font-medium leading-relaxed mb-4">
+                        &ldquo;{msg.narrative.throughline}&rdquo;
+                      </p>
+
+                      {/* Evidence */}
+                      {msg.narrative.evidence.length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-xs font-mono text-text-muted uppercase tracking-wider mb-2">Evidence</p>
+                          <ul className="space-y-1.5">
+                            {msg.narrative.evidence.map((e, i) => (
+                              <li key={i} className="text-sm text-text-secondary flex items-start gap-2">
+                                <span className="text-[#F0883E] mt-0.5">&#x2022;</span>
+                                <span>{e}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Reframe */}
+                      <div className="bg-[#F0883E]/10 rounded-lg p-4 mb-4">
+                        <p className="text-sm text-text-primary leading-relaxed">
+                          {msg.narrative.reframe}
+                        </p>
+                      </div>
+
+                      {/* Positioning statement */}
+                      {msg.narrative.positioning_statement && (
+                        <div className="border-t border-[#F0883E]/20 pt-3">
+                          <p className="text-xs font-mono text-text-muted uppercase tracking-wider mb-1">
+                            Your Story, In Your Voice
+                          </p>
+                          <p className="text-sm text-text-primary italic leading-relaxed">
+                            {msg.narrative.positioning_statement}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             ) : (
@@ -232,13 +391,23 @@ export function CoachingPanel() {
                       </p>
                     </div>
 
-                    {/* Read aloud button */}
+                    {/* TTS button */}
                     {msg.coachId && msg.coachId !== 'system' && (
                       <button
-                        onClick={() => handleSpeak(msg.content)}
-                        className="mt-1 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                        onClick={() => handlePlayTTS(msg.content, msg.coachId!)}
+                        className="mt-1 text-xs text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
                       >
-                        {isSpeaking ? 'Stop' : 'Read aloud'}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          {playingAudio === msg.coachId ? (
+                            <>
+                              <rect x="6" y="4" width="4" height="16" />
+                              <rect x="14" y="4" width="4" height="16" />
+                            </>
+                          ) : (
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                          )}
+                        </svg>
+                        {playingAudio === msg.coachId ? 'Stop' : 'Listen'}
                       </button>
                     )}
                   </div>
@@ -259,7 +428,7 @@ export function CoachingPanel() {
               </div>
             </div>
             <div className="text-sm text-text-muted pt-2 font-mono">
-              Panel is conferring...
+              {isSynthesizing ? 'Synthesizing career throughline...' : 'Panel is conferring...'}
             </div>
           </div>
         )}
@@ -309,17 +478,20 @@ export function CoachingPanel() {
               placeholder={
                 isListening
                   ? 'Listening...'
-                  : 'Push back on the panel, share a story, or ask a question...'
+                  : coachingPhase === 'flat_mirror'
+                    ? 'Tell the panel what they got wrong about your career...'
+                    : 'Share a story, push back, or answer their question...'
               }
               rows={1}
-              className="flex-1 px-4 py-3 rounded-xl bg-bg-tertiary border border-border text-text-primary placeholder-text-muted resize-none focus:outline-none focus:border-accent-blue transition-colors text-sm"
+              disabled={isLoading || isStaggering}
+              className="flex-1 px-4 py-3 rounded-xl bg-bg-tertiary border border-border text-text-primary placeholder-text-muted resize-none focus:outline-none focus:border-accent-blue transition-colors text-sm disabled:opacity-50"
               style={{ maxHeight: '120px' }}
             />
 
             {/* Send button */}
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || isStaggering}
               className="flex-shrink-0 w-10 h-10 rounded-full bg-accent-blue text-bg-primary flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -333,9 +505,16 @@ export function CoachingPanel() {
             <span className="text-xs text-text-muted">
               Press Enter to send, Shift+Enter for new line
             </span>
-            <span className="text-xs text-text-muted font-mono">
-              {coachingPhase.replace('_', ' ')}
-            </span>
+            <div className="flex items-center gap-3">
+              {roundCount > 0 && (
+                <span className="text-xs text-text-muted font-mono">
+                  Round {roundCount}
+                </span>
+              )}
+              <span className="text-xs text-text-muted font-mono">
+                {PHASE_LABELS[coachingPhase] || coachingPhase}
+              </span>
+            </div>
           </div>
         </div>
       </div>

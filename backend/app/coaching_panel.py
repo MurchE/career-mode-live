@@ -9,6 +9,7 @@ Flow:
 3. Coach 3 (Viktor) gets persona + user context + Chad's + Reeves' responses
 """
 
+import json
 from typing import Optional
 
 from app.gemini_service import generate, generate_with_history
@@ -185,3 +186,73 @@ Keep it to 1-2 sentences — sharp, targeted."""
         })
 
     return responses
+
+
+async def run_narrative_synthesis(
+    conversation_history: list[dict],
+    character_sheet: dict | None = None,
+) -> dict:
+    """Synthesize the career throughline from the coaching conversation.
+
+    This is the payoff moment — after several rounds of provocation and discussion,
+    Viktor synthesizes a career narrative that captures what makes this person unique.
+    """
+    # Build conversation transcript
+    transcript_parts = []
+    for entry in conversation_history:
+        role = entry.get("role", "user")
+        speaker = entry.get("coach_name", role.upper())
+        content = entry.get("content", "")
+        transcript_parts.append(f"[{speaker}]: {content}")
+    transcript = "\n".join(transcript_parts)
+
+    char_context = ""
+    if character_sheet:
+        char_context = f"\nCharacter Class: {character_sheet.get('character_class', 'unknown')}"
+        alloc = character_sheet.get("suggested_allocation", {})
+        if alloc:
+            top_skills = sorted(alloc.items(), key=lambda x: x[1], reverse=True)[:3]
+            char_context += f"\nTop skills: {', '.join(f'{s}({p})' for s, p in top_skills)}"
+
+    prompt = f"""You are a career narrative architect. You've been observing a coaching panel
+(Chad the provocateur, Dr. Reeves the depth therapist, and Viktor the analyst) work with
+a person to uncover their authentic career story.
+
+Based on the conversation below, identify the throughline — the organizing narrative that
+makes this person's career make sense as a story, not just a sequence of jobs.
+{char_context}
+
+=== COACHING CONVERSATION ===
+{transcript}
+
+=== YOUR TASK ===
+Return a JSON object with these fields:
+- "throughline": A single sentence capturing the career's organizing narrative (write it as "You are someone who...")
+- "evidence": 2-3 specific moments from the conversation that support this throughline
+- "reframe": 2-3 sentences you'd say directly to the person — warm, specific, using their own words where possible
+- "positioning_statement": A 2-sentence career summary written in their authentic voice, not corporate voice
+
+Return ONLY valid JSON, no markdown fences."""
+
+    response_text = await generate(
+        prompt=prompt,
+        system_instruction="You are an expert career narrative analyst. Return only valid JSON.",
+        temperature=0.7,
+        max_tokens=500,
+    )
+
+    # Parse JSON response
+    try:
+        cleaned = response_text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, IndexError):
+        return {
+            "throughline": response_text.strip(),
+            "evidence": [],
+            "reframe": response_text.strip(),
+            "positioning_statement": "",
+        }

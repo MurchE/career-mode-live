@@ -10,6 +10,7 @@ dependencies = [
     "python-multipart>=0.0.18",
     "python-dotenv>=1.0.1",
     "pydantic>=2.10.0",
+    "google-cloud-texttospeech>=2.34.0",
 ]
 
 [tool.hatch.build.targets.wheel]

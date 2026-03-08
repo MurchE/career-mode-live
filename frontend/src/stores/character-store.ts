@@ -1,14 +1,15 @@
 import { create } from 'zustand'
-import type { CharacterSheet, ConversationEntry, CoachResponse } from '@/lib/api'
+import type { CharacterSheet, ConversationEntry, CoachResponse, NarrativeResponse } from '@/lib/api'
 
 interface PanelMessage {
   id: string
-  type: 'user' | 'coach'
+  type: 'user' | 'coach' | 'system' | 'narrative'
   content: string
   coachId?: string
   coachName?: string
   color?: string
   timestamp: number
+  narrative?: NarrativeResponse
 }
 
 interface CharacterState {
@@ -22,6 +23,8 @@ interface CharacterState {
   messages: PanelMessage[]
   conversationHistory: ConversationEntry[]
   isLoading: boolean
+  roundCount: number
+  narrativeSynthesis: NarrativeResponse | null
 
   // Actions
   setOnboarded: (sheet: CharacterSheet, flatMirror: string) => void
@@ -31,6 +34,7 @@ interface CharacterState {
   addCoachResponses: (responses: CoachResponse[]) => void
   setLoading: (loading: boolean) => void
   updateCharacterSheet: (sheet: CharacterSheet) => void
+  setNarrativeSynthesis: (narrative: NarrativeResponse) => void
 }
 
 export const useCharacterStore = create<CharacterState>((set, get) => ({
@@ -41,6 +45,8 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   messages: [],
   conversationHistory: [],
   isLoading: false,
+  roundCount: 0,
+  narrativeSynthesis: null,
 
   setOnboarded: (sheet, flatMirror) =>
     set({
@@ -70,6 +76,8 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       messages: [],
       conversationHistory: [],
       isLoading: false,
+      roundCount: 0,
+      narrativeSynthesis: null,
     }),
 
   setCoachingPhase: (phase) => set({ coachingPhase: phase }),
@@ -113,9 +121,27 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
           coach_name: r.coach_name,
         })),
       ],
+      roundCount: state.roundCount + 1,
     })),
 
   setLoading: (loading) => set({ isLoading: loading }),
 
   updateCharacterSheet: (sheet) => set({ characterSheet: sheet }),
+
+  setNarrativeSynthesis: (narrative) =>
+    set((state) => ({
+      narrativeSynthesis: narrative,
+      messages: [
+        ...state.messages,
+        {
+          id: `narrative-${Date.now()}`,
+          type: 'narrative' as const,
+          content: narrative.throughline,
+          coachName: 'Panel Synthesis',
+          color: '#F0883E',
+          timestamp: Date.now(),
+          narrative,
+        },
+      ],
+    })),
 }))

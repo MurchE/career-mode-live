@@ -51,18 +51,20 @@ Each coach sees what the previous coaches said, creating genuine debate and buil
 
 ## Coaching Flow
 
-1. **Onboard**: Paste resume or share background
-2. **Flat Mirror**: Panel generates a deliberately generic career summary
-3. **Provocation**: You push back ("that's not what I did") -- panel probes deeper
-4. **Real Stories**: Panel extracts authentic narratives from your pushback
-5. **Synthesis**: Viktor builds a throughline framework from the conversation
+1. **Onboard**: Paste resume or share background — character sheet auto-generates
+2. **Flat Mirror**: Panel generates a deliberately generic career summary (displayed as a formal "Career Summary Report" card)
+3. **Provocation**: You push back ("that's not what I did") — the three coaches pounce from different angles
+4. **Deep Dive**: Panel extracts authentic narratives from your pushback across 2-4 rounds
+5. **Synthesis**: Click "Synthesize Throughline" — the panel reveals your career's organizing narrative, with evidence, reframe, and positioning statement
 
 ## Tech Stack
 
 - **Backend**: Python 3.12 / FastAPI / Google GenAI SDK
 - **Frontend**: Next.js 14 / TypeScript / TailwindCSS / Zustand
-- **AI Model**: Gemini 2.0 Flash
-- **Voice**: Web Speech API (recognition + synthesis)
+- **AI Model**: Gemini 2.5 Flash (thinking disabled for conversational speed)
+- **Voice Input**: Web Speech API (browser-native recognition)
+- **Voice Output**: Google Cloud Text-to-Speech (Neural2 voices — distinct per coach)
+- **Google Cloud**: Cloud TTS + Cloud Run (deployment)
 - **Deploy**: Docker / Google Cloud Run / Firebase Hosting
 
 ## Quick Start
@@ -130,6 +132,8 @@ Every user gets an auto-generated character sheet with:
 | GET | `/health` | Health check |
 | POST | `/api/onboard` | Process resume/background, generate character sheet + flat mirror |
 | POST | `/api/coaching/panel` | Run 3-coach panel on user input |
+| POST | `/api/coaching/synthesize` | Extract career throughline from conversation history |
+| POST | `/api/tts` | Text-to-speech with distinct coach voices (Cloud TTS) |
 | POST | `/api/skills/analyze` | Analyze skills from text |
 
 ## Project Structure

@@ -24,8 +24,8 @@ def get_client() -> genai.Client:
     return _client
 
 
-# Default model — Gemini 2.0 Flash for speed
-MODEL = "gemini-2.0-flash"
+# Default model — Gemini 2.5 Flash for speed + quality
+MODEL = "gemini-2.5-flash"
 
 
 async def generate(
@@ -44,6 +44,7 @@ async def generate(
     config = types.GenerateContentConfig(
         temperature=temperature,
         max_output_tokens=max_tokens,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     if system_instruction:
         config.system_instruction = system_instruction
@@ -72,6 +73,7 @@ async def generate_with_history(
     config = types.GenerateContentConfig(
         temperature=temperature,
         max_output_tokens=max_tokens,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     if system_instruction:
         config.system_instruction = system_instruction

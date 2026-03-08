@@ -84,6 +84,38 @@ export async function runPanel(req: PanelRequest): Promise<PanelResponse> {
   return apiPost<PanelResponse>('/api/coaching/panel', req)
 }
 
+// Narrative Synthesis — the payoff moment
+interface NarrativeRequest {
+  conversation_history: ConversationEntry[]
+  character_sheet: CharacterSheet | null
+}
+
+interface NarrativeResponse {
+  throughline: string
+  evidence: string[]
+  reframe: string
+  positioning_statement: string
+}
+
+export async function synthesizeNarrative(req: NarrativeRequest): Promise<NarrativeResponse> {
+  return apiPost<NarrativeResponse>('/api/coaching/synthesize', req)
+}
+
+// Text-to-Speech — returns audio blob
+export async function getCoachTTS(text: string, coachId: string): Promise<Blob | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, coach_id: coachId }),
+    })
+    if (!res.ok) return null
+    return res.blob()
+  } catch {
+    return null
+  }
+}
+
 export type {
   CoachResponse,
   PanelResponse,
@@ -92,4 +124,5 @@ export type {
   CharacterSheet,
   PanelRequest,
   ConversationEntry,
+  NarrativeResponse,
 }

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from app.coaching_panel import run_panel, run_flat_mirror, run_provocation
+from app.coaching_panel import run_panel, run_flat_mirror, run_provocation, run_narrative_synthesis
 from app.skill_analyzer import analyze_skills_from_text
 from app.resume_parser import parse_resume_text
 from app.gemini_service import get_client
@@ -223,3 +223,101 @@ async def analyze_skills(req: OnboardingRequest):
         parsed["years_experience"] = req.years_experience
 
     return analyze_skills_from_text(parsed)
+
+
+# ---------------------------------------------------------------------------
+# Narrative Synthesis — the payoff moment
+# ---------------------------------------------------------------------------
+
+class NarrativeRequest(BaseModel):
+    conversation_history: list[dict]
+    character_sheet: Optional[dict] = None
+
+
+class NarrativeResponse(BaseModel):
+    throughline: str
+    evidence: list[str]
+    reframe: str
+    positioning_statement: str
+
+
+@app.post("/api/coaching/synthesize", response_model=NarrativeResponse)
+async def synthesize_narrative(req: NarrativeRequest):
+    """Synthesize the career throughline from conversation history.
+
+    Call this after 3+ rounds of coaching to generate the "aha" moment —
+    the career narrative that the user couldn't have written themselves.
+    """
+    try:
+        result = await run_narrative_synthesis(
+            conversation_history=req.conversation_history,
+            character_sheet=req.character_sheet,
+        )
+        return NarrativeResponse(
+            throughline=result.get("throughline", ""),
+            evidence=result.get("evidence", []),
+            reframe=result.get("reframe", ""),
+            positioning_statement=result.get("positioning_statement", ""),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Text-to-Speech — distinct voices for each coach
+# ---------------------------------------------------------------------------
+
+class TTSRequest(BaseModel):
+    text: str
+    coach_id: str = "viktor"  # chad | reeves | viktor
+
+
+# Coach-to-voice mapping for Google Cloud TTS
+COACH_VOICES = {
+    "chad": {"name": "en-US-Neural2-J", "pitch": 0.0, "rate": 1.1},
+    "reeves": {"name": "en-GB-Neural2-B", "pitch": -1.0, "rate": 0.95},
+    "viktor": {"name": "en-US-Neural2-D", "pitch": -2.0, "rate": 1.0},
+}
+
+
+@app.post("/api/tts")
+async def text_to_speech(req: TTSRequest):
+    """Convert coach response to speech using Google Cloud TTS.
+
+    Each coach gets a distinct voice — Chad is casual US, Reeves is measured
+    British, Viktor is precise and deep.
+    """
+    try:
+        from google.cloud import texttospeech
+        from fastapi.responses import Response
+
+        client = texttospeech.TextToSpeechClient()
+        voice_config = COACH_VOICES.get(req.coach_id, COACH_VOICES["viktor"])
+
+        synthesis_input = texttospeech.SynthesisInput(text=req.text)
+        voice = texttospeech.VoiceSelectionParams(
+            language_code=voice_config["name"][:5],  # en-US or en-GB
+            name=voice_config["name"],
+        )
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=voice_config["rate"],
+            pitch=voice_config["pitch"],
+        )
+
+        response = client.synthesize_speech(
+            input=synthesis_input, voice=voice, audio_config=audio_config
+        )
+
+        return Response(
+            content=response.audio_content,
+            media_type="audio/mpeg",
+            headers={"Content-Disposition": f"inline; filename={req.coach_id}_response.mp3"},
+        )
+    except ImportError:
+        raise HTTPException(
+            status_code=501,
+            detail="Google Cloud TTS not installed. Install with: uv add google-cloud-texttospeech"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS error: {str(e)}")
