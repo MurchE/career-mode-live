@@ -148,6 +148,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       if (!s.currentStroke || s.currentStroke.length < 2) {
         return { currentStroke: null }
       }
+
+      // Arrow tool: create an AI shape (arrow from start to end point)
+      if (s.tool === 'arrow') {
+        const first = s.currentStroke[0]
+        const last = s.currentStroke[s.currentStroke.length - 1]
+        const arrowShape: AIShape = {
+          id: nextId('user-arrow'),
+          type: 'arrow',
+          x: first.x,
+          y: first.y,
+          toX: last.x,
+          toY: last.y,
+          color: s.penColor,
+          strokeWidth: s.penSize,
+          timestamp: Date.now(),
+          animated: false,
+        }
+        return {
+          aiShapes: [...s.aiShapes, arrowShape],
+          currentStroke: null,
+        }
+      }
+
       const stroke: Stroke = {
         id: nextId('stroke'),
         points: s.currentStroke,

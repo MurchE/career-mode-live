@@ -158,8 +158,10 @@ export function useGeminiLive(config: GeminiLiveConfig) {
   const wsRef = useRef<WebSocket | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null)
+  const processorRef = useRef<ScriptProcessorNode | null>(null)
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const playbackQueueRef = useRef<Float32Array[]>([])
+  const nextPlayTimeRef = useRef(0)
   const isPlayingRef = useRef(false)
   const screenshotIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -174,15 +176,23 @@ export function useGeminiLive(config: GeminiLiveConfig) {
     error: null,
   })
 
-  // ── Playback queue processor ──
-  const processPlaybackQueue = useCallback(async () => {
-    if (isPlayingRef.current || playbackQueueRef.current.length === 0) return
-    isPlayingRef.current = true
+  // ── Gapless playback queue processor ──
+  const processPlaybackQueue = useCallback(() => {
+    if (playbackQueueRef.current.length === 0) return
 
     const ctx = audioContextRef.current
-    if (!ctx) {
-      isPlayingRef.current = false
-      return
+    if (!ctx) return
+
+    // Schedule all queued chunks contiguously for gapless playback
+    const now = ctx.currentTime
+    if (nextPlayTimeRef.current < now) {
+      nextPlayTimeRef.current = now
+    }
+
+    if (!isPlayingRef.current) {
+      isPlayingRef.current = true
+      setState((s) => ({ ...s, isSpeaking: true }))
+      setVoice({ isSpeaking: true })
     }
 
     while (playbackQueueRef.current.length > 0) {
@@ -192,19 +202,38 @@ export function useGeminiLive(config: GeminiLiveConfig) {
       const source = ctx.createBufferSource()
       source.buffer = buffer
       source.connect(ctx.destination)
-      source.start()
+      source.start(nextPlayTimeRef.current)
 
-      setState((s) => ({ ...s, isSpeaking: true }))
-      setVoice({ isSpeaking: true })
+      // Track when this chunk ends — next chunk starts immediately after
+      const duration = samples.length / 24000
+      nextPlayTimeRef.current += duration
 
-      await new Promise<void>((resolve) => {
-        source.onended = () => resolve()
-      })
+      // When last scheduled chunk finishes, mark as not speaking
+      source.onended = () => {
+        const ctx2 = audioContextRef.current
+        if (ctx2 && ctx2.currentTime >= nextPlayTimeRef.current - 0.05) {
+          isPlayingRef.current = false
+          setState((s) => ({ ...s, isSpeaking: false }))
+          setVoice({ isSpeaking: false })
+        }
+      }
     }
+  }, [setVoice])
 
+  // ── Flush playback (for barge-in) ──
+  const flushPlayback = useCallback(() => {
+    playbackQueueRef.current = []
+    nextPlayTimeRef.current = 0
+    isPlayingRef.current = false
+    // Close and recreate AudioContext to stop all scheduled sources
+    const oldCtx = audioContextRef.current
+    if (oldCtx && oldCtx.state !== 'closed') {
+      oldCtx.close().catch(() => {})
+      // Create a fresh context for future playback
+      audioContextRef.current = new AudioContext({ sampleRate: 48000 })
+    }
     setState((s) => ({ ...s, isSpeaking: false }))
     setVoice({ isSpeaking: false })
-    isPlayingRef.current = false
   }, [setVoice])
 
   // ── Handle incoming WebSocket messages ──
@@ -217,6 +246,12 @@ export function useGeminiLive(config: GeminiLiveConfig) {
         if (msg.setupComplete) {
           setState((s) => ({ ...s, isConnected: true, error: null }))
           setVoice({ isConnected: true })
+          return
+        }
+
+        // Barge-in: user interrupted AI — flush playback
+        if (msg.serverContent?.interrupted) {
+          flushPlayback()
           return
         }
 
@@ -273,7 +308,7 @@ export function useGeminiLive(config: GeminiLiveConfig) {
         console.error('Gemini Live message parse error:', err)
       }
     },
-    [addAIShapes, setAIThinking, setAIDrawing, setAIStatus, setVoice, processPlaybackQueue],
+    [addAIShapes, setAIThinking, setAIDrawing, setAIStatus, setVoice, processPlaybackQueue, flushPlayback],
   )
 
   // ── Start mic capture using ScriptProcessorNode (broader browser support) ──
@@ -297,6 +332,7 @@ export function useGeminiLive(config: GeminiLiveConfig) {
 
         // Use ScriptProcessorNode for broader compatibility
         const processor = ctx.createScriptProcessor(4096, 1, 1)
+        processorRef.current = processor
         processor.onaudioprocess = (e) => {
           if (ws.readyState !== WebSocket.OPEN) return
 
@@ -320,6 +356,7 @@ export function useGeminiLive(config: GeminiLiveConfig) {
           )
         }
 
+        sourceNodeRef.current = source
         source.connect(processor)
         processor.connect(ctx.destination) // Required for ScriptProcessor to work
 
@@ -398,18 +435,20 @@ export function useGeminiLive(config: GeminiLiveConfig) {
     }
 
     ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data)
-      if (msg.setupComplete) {
-        // Setup done — start mic and screenshot loop
-        handleMessage(event)
-        startMicCapture(ws)
+      // Parse once, pass to handler
+      handleMessage(event)
 
-        // Send canvas screenshots every 2 seconds
-        screenshotIntervalRef.current = setInterval(() => {
-          sendCanvasScreenshot()
-        }, 2000)
-      } else {
-        handleMessage(event)
+      // Check for setup complete to start mic/screenshots
+      try {
+        const msg = JSON.parse(event.data)
+        if (msg.setupComplete) {
+          startMicCapture(ws)
+          screenshotIntervalRef.current = setInterval(() => {
+            sendCanvasScreenshot()
+          }, 2000)
+        }
+      } catch {
+        // Parse error handled in handleMessage
       }
     }
 
@@ -437,7 +476,15 @@ export function useGeminiLive(config: GeminiLiveConfig) {
 
   // ── Disconnect ──
   const disconnect = useCallback(() => {
-    // Stop mic
+    // Stop mic and disconnect audio nodes
+    if (processorRef.current) {
+      processorRef.current.disconnect()
+      processorRef.current = null
+    }
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect()
+      sourceNodeRef.current = null
+    }
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((t) => t.stop())
       micStreamRef.current = null
@@ -463,6 +510,7 @@ export function useGeminiLive(config: GeminiLiveConfig) {
 
     // Clear playback queue
     playbackQueueRef.current = []
+    nextPlayTimeRef.current = 0
     isPlayingRef.current = false
 
     setState({

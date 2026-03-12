@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, memo, useMemo } from 'react'
 import { getStroke } from 'perfect-freehand'
 import { useCanvasStore } from '@/stores/canvas-store'
 import type { Point, Stroke } from '@/stores/canvas-store'
@@ -48,33 +48,23 @@ function getStrokePath(points: Point[], size: number): string {
     thinning: 0.5,
     smoothing: 0.5,
     streamline: 0.5,
-    simulatePressure: true,
+    simulatePressure: false,
   })
   return getSvgPathFromStroke(outline)
 }
 
-/** Generate a wobbly hand-drawn line path between two points */
-function wobbleLine(x1: number, y1: number, x2: number, y2: number): string {
-  const dx = x2 - x1
-  const dy = y2 - y1
-  const len = Math.sqrt(dx * dx + dy * dy)
-  const wobble = Math.min(len * 0.03, 4)
-  const mx = (x1 + x2) / 2
-  const my = (y1 + y2) / 2
-  const cpx = mx + (Math.random() - 0.5) * wobble * 2
-  const cpy = my + (Math.random() - 0.5) * wobble * 2
-  return `M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`
-}
-
 // ─── Stroke Renderer ─────────────────────────────────────────────────────────
 
-function StrokeRenderer({
+const StrokeRenderer = memo(function StrokeRenderer({
   stroke,
 }: {
   stroke: Stroke
 }) {
-  const path = getStrokePath(stroke.points, stroke.size)
-  const pathLen = stroke.points.length * stroke.size * 2 // rough estimate
+  // Memoize path computation — completed strokes never change
+  const path = useMemo(
+    () => getStrokePath(stroke.points, stroke.size),
+    [stroke.points, stroke.size],
+  )
 
   return (
     <path
@@ -92,7 +82,7 @@ function StrokeRenderer({
       }
     />
   )
-}
+})
 
 /** Render the current in-progress stroke (live preview) */
 function CurrentStrokeRenderer({
@@ -184,22 +174,21 @@ export function DrawCanvas() {
   const [isDrawing, setIsDrawing] = useState(false)
   const [aiCursorPos, setAICursorPos] = useState({ x: 0, y: 0 })
 
-  const {
-    strokes,
-    currentStroke,
-    tool,
-    penColor,
-    penSize,
-    aiShapes,
-    isAIDrawing,
-    isAIThinking,
-    aiStatus,
-    voice,
-    startStroke,
-    addPoint,
-    endStroke,
-    setCanvasSize,
-  } = useCanvasStore()
+  // Granular selectors to prevent unnecessary re-renders
+  const strokes = useCanvasStore((s) => s.strokes)
+  const currentStroke = useCanvasStore((s) => s.currentStroke)
+  const tool = useCanvasStore((s) => s.tool)
+  const penColor = useCanvasStore((s) => s.penColor)
+  const penSize = useCanvasStore((s) => s.penSize)
+  const aiShapes = useCanvasStore((s) => s.aiShapes)
+  const isAIDrawing = useCanvasStore((s) => s.isAIDrawing)
+  const isAIThinking = useCanvasStore((s) => s.isAIThinking)
+  const aiStatus = useCanvasStore((s) => s.aiStatus)
+  const voice = useCanvasStore((s) => s.voice)
+  const startStroke = useCanvasStore((s) => s.startStroke)
+  const addPoint = useCanvasStore((s) => s.addPoint)
+  const endStroke = useCanvasStore((s) => s.endStroke)
+  const setCanvasSize = useCanvasStore((s) => s.setCanvasSize)
 
   // Track container size
   useEffect(() => {
@@ -265,28 +254,10 @@ export function DrawCanvas() {
           ? 'crosshair'
           : 'default'
 
+  const isEmpty = strokes.length === 0 && aiShapes.length === 0
+
   return (
     <div className="draw-canvas relative flex flex-col h-full bg-[#0D1117]">
-      {/* Inline animations */}
-      <style>{`
-        @keyframes draw-fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes ai-shape-draw {
-          to { stroke-dashoffset: 0; }
-        }
-        @keyframes ai-thinking-pulse {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 0.8; }
-        }
-        @keyframes ai-cursor-draw {
-          0% { r: 4; opacity: 0.8; }
-          50% { r: 6; opacity: 1; }
-          100% { r: 4; opacity: 0.8; }
-        }
-      `}</style>
-
       {/* Toolbar */}
       <DrawingToolbar />
 
@@ -336,6 +307,31 @@ export function DrawCanvas() {
 
       {/* Canvas */}
       <div ref={containerRef} className="flex-1 overflow-hidden relative">
+        {/* Empty state */}
+        {isEmpty && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+            <div className="text-center max-w-sm">
+              <div className="text-6xl mb-4 opacity-20">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#8B949E" strokeWidth="1" className="mx-auto">
+                  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                </svg>
+              </div>
+              <p className="text-[#8B949E] text-sm font-mono mb-2">
+                Start drawing anything
+              </p>
+              <p className="text-[#484F58] text-xs font-mono">
+                Sketch your career story, map out ideas, or just doodle.
+                <br />
+                AI will see your drawing and respond visually.
+              </p>
+              <div className="flex items-center justify-center gap-4 mt-4 text-[10px] font-mono text-[#484F58]">
+                <span className="px-2 py-0.5 rounded border border-[#21262D]">P</span> Pen
+                <span className="px-2 py-0.5 rounded border border-[#21262D]">E</span> Eraser
+                <span className="px-2 py-0.5 rounded border border-[#21262D]">Enter</span> Ask AI
+              </div>
+            </div>
+          </div>
+        )}
         <svg
           ref={svgRef}
           className="w-full h-full touch-none"
@@ -356,13 +352,43 @@ export function DrawCanvas() {
           ))}
 
           {/* Current in-progress stroke */}
-          {currentStroke && currentStroke.length > 1 && (
+          {currentStroke && currentStroke.length > 1 && tool !== 'arrow' && (
             <CurrentStrokeRenderer
               points={currentStroke}
               color={tool === 'eraser' ? '#0D1117' : penColor}
               size={tool === 'eraser' ? penSize * 4 : penSize}
             />
           )}
+
+          {/* Arrow preview while dragging */}
+          {currentStroke && currentStroke.length > 1 && tool === 'arrow' && (() => {
+            const first = currentStroke[0]
+            const last = currentStroke[currentStroke.length - 1]
+            const dx = last.x - first.x
+            const dy = last.y - first.y
+            const angle = Math.atan2(dy, dx)
+            const headLen = 14
+            const headAngle = 0.4
+            return (
+              <g opacity={0.8}>
+                <line
+                  x1={first.x} y1={first.y}
+                  x2={last.x} y2={last.y}
+                  stroke={penColor}
+                  strokeWidth={penSize}
+                  strokeLinecap="round"
+                />
+                <path
+                  d={`M ${last.x - headLen * Math.cos(angle - headAngle)} ${last.y - headLen * Math.sin(angle - headAngle)} L ${last.x} ${last.y} L ${last.x - headLen * Math.cos(angle + headAngle)} ${last.y - headLen * Math.sin(angle + headAngle)}`}
+                  fill="none"
+                  stroke={penColor}
+                  strokeWidth={penSize}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+            )
+          })()}
 
           {/* AI drawing layer */}
           <AIDrawingLayer shapes={aiShapes} />

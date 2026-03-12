@@ -58,7 +58,7 @@ export function Onboarding() {
         {/* Coach Preview */}
         <div className="flex justify-center gap-6">
           {[
-            { name: 'Chad', title: 'The Roast Bro', color: 'text-chad', icon: 'F' },
+            { name: 'Chad', title: 'The Roast Bro', color: 'text-chad', icon: 'C' },
             { name: 'Dr. Reeves', title: 'Depth Therapist', color: 'text-reeves', icon: 'R' },
             { name: 'Viktor', title: 'Tech Savant', color: 'text-viktor', icon: 'V' },
           ].map((coach) => (

@@ -16,7 +16,6 @@ export default function WhiteboardPage() {
     setAIDrawing,
     setAIStatus,
     clearCanvas,
-    clearAIShapes,
     voice,
   } = useCanvasStore()
 
@@ -261,10 +260,7 @@ export default function WhiteboardPage() {
           )}
 
           <button
-            onClick={() => {
-              clearCanvas()
-              clearAIShapes()
-            }}
+            onClick={clearCanvas}
             className="px-3 py-1.5 rounded-lg text-xs font-mono text-[#8B949E] hover:text-[#FF7B72] transition-all"
             style={{ border: '1px solid rgba(201,209,217,0.1)' }}
           >

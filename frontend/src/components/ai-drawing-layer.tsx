@@ -93,7 +93,7 @@ function sketchHighlight(x: number, y: number, w: number, h: number, seed: numbe
 
 function AICircle({ shape }: { shape: AIShape }) {
   const r = shape.radius ?? 30
-  const seed = shape.x + shape.y
+  const seed = shape.x * 1000 + shape.y
   const path = useMemo(() => sketchCircle(shape.x, shape.y, r, seed), [shape.x, shape.y, r, seed])
   const pathLen = Math.PI * 2 * r + 50
 
@@ -142,7 +142,7 @@ function AICircle({ shape }: { shape: AIShape }) {
 function AIRect({ shape }: { shape: AIShape }) {
   const w = shape.width ?? 100
   const h = shape.height ?? 60
-  const seed = shape.x + shape.y
+  const seed = shape.x * 1000 + shape.y
   const path = useMemo(() => sketchRect(shape.x, shape.y, w, h, seed), [shape.x, shape.y, w, h, seed])
   const pathLen = (w + h) * 2 + 40
 
@@ -288,7 +288,7 @@ function AIText({ shape }: { shape: AIShape }) {
 function AIHighlight({ shape }: { shape: AIShape }) {
   const w = shape.width ?? 100
   const h = shape.height ?? 30
-  const seed = shape.x + shape.y
+  const seed = shape.x * 1000 + shape.y
   const path = useMemo(
     () => sketchHighlight(shape.x, shape.y, w, h, seed),
     [shape.x, shape.y, w, h, seed],

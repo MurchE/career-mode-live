@@ -174,6 +174,8 @@ async def generate_interleaved(
     )
 
     parts = []
+    if not response.candidates or not response.candidates[0].content.parts:
+        return [{"type": "text", "content": "I wasn't able to generate the storyboard. Let's try again."}]
     for part in response.candidates[0].content.parts:
         if part.text is not None:
             parts.append({"type": "text", "content": part.text})
@@ -216,6 +218,8 @@ async def generate_speech(
         config=config,
     )
 
+    if not response.candidates or not response.candidates[0].content.parts:
+        raise RuntimeError("TTS generation returned no audio data")
     pcm_data = response.candidates[0].content.parts[0].inline_data.data
 
     # Convert raw PCM to WAV

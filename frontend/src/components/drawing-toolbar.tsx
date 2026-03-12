@@ -21,7 +21,15 @@ const TOOLS: { id: DrawingTool; label: string; icon: string; shortcut: string }[
 const SIZES = [2, 3, 5, 8]
 
 export function DrawingToolbar() {
-  const { tool, penColor, penSize, setTool, setPenColor, setPenSize, clearCanvas, undoStroke, voice } = useCanvasStore()
+  const tool = useCanvasStore((s) => s.tool)
+  const penColor = useCanvasStore((s) => s.penColor)
+  const penSize = useCanvasStore((s) => s.penSize)
+  const setTool = useCanvasStore((s) => s.setTool)
+  const setPenColor = useCanvasStore((s) => s.setPenColor)
+  const setPenSize = useCanvasStore((s) => s.setPenSize)
+  const clearCanvas = useCanvasStore((s) => s.clearCanvas)
+  const undoStroke = useCanvasStore((s) => s.undoStroke)
+  const voice = useCanvasStore((s) => s.voice)
 
   return (
     <div
@@ -148,16 +156,19 @@ export function DrawingToolbar() {
           {voice.isListening ? 'Listening' : 'Voice'}
         </button>
 
-        {/* AI status indicator */}
+        {/* AI status indicator — reflects voice connection state */}
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono"
-          style={{ color: '#7EE787' }}
+          style={{ color: voice.isConnected ? '#7EE787' : '#8B949E' }}
         >
           <div
             className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: '#7EE787', opacity: 0.6 }}
+            style={{
+              backgroundColor: voice.isConnected ? '#7EE787' : '#8B949E',
+              opacity: 0.6,
+            }}
           />
-          AI Ready
+          {voice.isConnected ? 'AI Connected' : 'AI Standby'}
         </div>
       </div>
     </div>

@@ -9,9 +9,8 @@ that the frontend renders with hand-drawn animated strokes.
 import base64
 import json
 import logging
-from typing import Any
 
-from .gemini_service import generate_json
+from .gemini_service import get_client, MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -126,13 +125,12 @@ Look at what the user has drawn and respond with drawing commands. Place your an
 
 Return your response as JSON matching the schema with 'shapes' array and 'voice_response' string."""
 
-    try:
-        # Use Gemini with image input
-        from google import genai
-        from google.genai import types
-        import os
+    VALID_SHAPE_TYPES = {"circle", "rect", "arrow", "text", "highlight"}
 
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    try:
+        from google.genai import types
+
+        client = get_client()
 
         image_part = types.Part.from_bytes(
             data=base64.b64decode(image_base64),
@@ -140,7 +138,7 @@ Return your response as JSON matching the schema with 'shapes' array and 'voice_
         )
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=MODEL,
             contents=[
                 types.Content(
                     role="user",
@@ -158,8 +156,10 @@ Return your response as JSON matching the schema with 'shapes' array and 'voice_
             ),
         )
 
-        result_text = response.text.strip()
-        result = json.loads(result_text)
+        result_text = response.text
+        if not result_text:
+            return {"shapes": [], "voice_response": "I couldn't analyze the canvas. Could you draw something and try again?"}
+        result = json.loads(result_text.strip())
 
         # Validate shapes
         shapes = result.get("shapes", [])
@@ -169,12 +169,26 @@ Return your response as JSON matching the schema with 'shapes' array and 'voice_
                 continue
             if "type" not in shape or "x" not in shape or "y" not in shape:
                 continue
+            # Validate type against enum
+            if shape["type"] not in VALID_SHAPE_TYPES:
+                continue
             # Ensure color
             if "color" not in shape:
                 shape["color"] = "#7EE787"
-            # Clamp coordinates to canvas bounds
+            # Clamp all coordinates to canvas bounds
             shape["x"] = max(0, min(shape["x"], canvas_width))
             shape["y"] = max(0, min(shape["y"], canvas_height))
+            if "toX" in shape:
+                shape["toX"] = max(0, min(shape["toX"], canvas_width))
+            if "toY" in shape:
+                shape["toY"] = max(0, min(shape["toY"], canvas_height))
+            # Clamp dimensions
+            if "width" in shape:
+                shape["width"] = max(1, min(shape["width"], canvas_width))
+            if "height" in shape:
+                shape["height"] = max(1, min(shape["height"], canvas_height))
+            if "radius" in shape:
+                shape["radius"] = max(1, min(shape["radius"], min(canvas_width, canvas_height) // 2))
             validated_shapes.append(shape)
 
         return {
