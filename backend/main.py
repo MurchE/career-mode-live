@@ -309,8 +309,8 @@ class StarExtractionRequest(BaseModel):
 class StarElementResponse(BaseModel):
     category: str
     content: str
-    coach_id: str
-    coach_name: str
+    coach_id: str = ""
+    coach_name: str = ""
 
 
 class StarExtractionResponse(BaseModel):
