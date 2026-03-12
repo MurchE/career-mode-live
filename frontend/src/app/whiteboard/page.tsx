@@ -23,16 +23,22 @@ export default function WhiteboardPage() {
   const [mode, setMode] = useState<'voice' | 'vision'>('vision')
   const [textInput, setTextInput] = useState('')
   const [apiKey, setApiKey] = useState('')
+  const [backendStatus, setBackendStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting')
 
   // Fetch API key from backend on mount
   useEffect(() => {
     fetch(`${API_BASE}/api/live/config`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (data?.api_key) setApiKey(data.api_key)
+        if (data?.api_key) {
+          setApiKey(data.api_key)
+          setBackendStatus('connected')
+        } else {
+          setBackendStatus('offline')
+        }
       })
       .catch(() => {
-        // Backend not available — voice mode won't work
+        setBackendStatus('offline')
       })
   }, [])
 
@@ -156,6 +162,7 @@ export default function WhiteboardPage() {
   )
 
   const isVoiceAvailable = !!apiKey
+  const isBackendReady = backendStatus === 'connected'
 
   return (
     <div className="h-screen flex flex-col bg-[#0D1117]">
@@ -267,6 +274,12 @@ export default function WhiteboardPage() {
             Reset
           </button>
 
+          {backendStatus === 'offline' && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono text-[#FF7B72]">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#FF7B72]" />
+              Backend Offline
+            </div>
+          )}
           <a
             href="/"
             className="text-xs text-[#8B949E] hover:text-[#C9D1D9] transition-colors"
