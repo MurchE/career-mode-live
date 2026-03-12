@@ -28,7 +28,7 @@ if [ ! -d ".venv" ]; then
     echo "  -> Installing backend dependencies..."
     uv sync
 fi
-uv run uvicorn main:app --reload --port 8000 &
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 
 # Frontend
