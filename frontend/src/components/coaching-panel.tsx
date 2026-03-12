@@ -405,6 +405,37 @@ export function CoachingPanel() {
                         </p>
                       </div>
 
+                      {/* Power bullets */}
+                      {msg.narrative.power_bullets && msg.narrative.power_bullets.length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-xs font-mono text-text-muted uppercase tracking-wider mb-2">Resume-Ready Bullets</p>
+                          <ul className="space-y-2">
+                            {msg.narrative.power_bullets.map((bullet: string, i: number) => (
+                              <li key={i} className="text-sm text-text-primary flex items-start gap-2 bg-bg-secondary/50 rounded-lg p-2.5 border border-border">
+                                <span className="text-[#7EE787] mt-0.5 flex-shrink-0">&#x2713;</span>
+                                <span>{bullet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Target roles */}
+                      {msg.narrative.target_roles && msg.narrative.target_roles.length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-xs font-mono text-text-muted uppercase tracking-wider mb-2">Where This Is a Superpower</p>
+                          <div className="space-y-2">
+                            {msg.narrative.target_roles.map((tr: { role: string; why: string }, i: number) => (
+                              <div key={i} className="text-sm flex items-start gap-2">
+                                <span className="text-[#58A6FF] font-medium flex-shrink-0">{tr.role}</span>
+                                <span className="text-text-muted">—</span>
+                                <span className="text-text-secondary">{tr.why}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Positioning statement */}
                       {msg.narrative.positioning_statement && (
                         <div className="border-t border-[#F0883E]/20 pt-3">

@@ -95,6 +95,8 @@ interface NarrativeResponse {
   evidence: string[]
   reframe: string
   positioning_statement: string
+  power_bullets?: string[]
+  target_roles?: { role: string; why: string }[]
 }
 
 export async function synthesizeNarrative(req: NarrativeRequest): Promise<NarrativeResponse> {

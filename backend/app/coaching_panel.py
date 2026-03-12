@@ -238,10 +238,12 @@ makes this person's career make sense as a story, not just a sequence of jobs.
 
 === YOUR TASK ===
 Return a JSON object with these fields:
-- "throughline": A single sentence capturing the career's organizing narrative (write it as "You are someone who...")
-- "evidence": 2-3 specific moments from the conversation that support this throughline
-- "reframe": 2-3 sentences you'd say directly to the person — warm, specific, using their own words where possible
-- "positioning_statement": A 2-sentence career summary written in their authentic voice, not corporate voice
+- "throughline": A single sentence capturing the career's organizing narrative (write it as "You are someone who..."). This must be a GENUINE INSIGHT, not a summary. Connect dots the person hasn't connected themselves.
+- "evidence": 2-3 specific moments from the conversation that support this throughline (use their exact words when possible)
+- "reframe": 2-3 sentences you'd say directly to the person — warm but SPECIFIC. Use their own words. Name the tension they're living in. Don't just validate — illuminate.
+- "positioning_statement": A 2-3 sentence career summary written in their authentic voice. Must include at least one SPECIFIC achievement (not generic). This should be ready to paste into a LinkedIn About section or tell in 30 seconds at a networking event.
+- "power_bullets": 3 resume-ready bullet points extracted from the conversation. Each should follow the format "Action verb + specific achievement + measurable impact where possible". These should be concrete enough to put on a resume tomorrow.
+- "target_roles": 2-3 specific job titles/roles where this person's throughline is a superpower, with a 1-sentence explanation of why for each. Format as array of objects with "role" and "why" fields.
 
 Return ONLY valid JSON, no markdown fences."""
 
