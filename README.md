@@ -125,6 +125,23 @@ Every user gets an auto-generated character sheet with:
 - **Point Budget**: Base 100 + 3 per year of experience
 - **Radar Chart**: Visual skill distribution
 
+## DrawTogether — AI Collaborative Whiteboard
+
+A visual thinking canvas where you draw and the AI responds with annotations, connections, and insights:
+
+- **Pen tool** with pressure-sensitive freehand drawing (via `perfect-freehand`)
+- **Arrow tool** for connecting concepts
+- **Color palette** (7 colors) and stroke sizes
+- **Vision mode**: Draw anything → AI sees your canvas → responds with hand-drawn shapes, arrows, labels
+- **Voice + Vision mode**: Real-time bidirectional voice via Gemini Live API WebSocket + canvas screenshots
+- **AI drawing layer**: Hand-drawn wobbly aesthetic with animated stroke-dashoffset reveals
+
+Navigate to `/whiteboard` from the main app.
+
+## Career Trailer — Storyboard Generator
+
+After the coaching session, Gemini generates an interleaved text + image career storyboard using the `gemini-2.5-flash-image` model. This is rendered as a cinematic Career Trailer with Ken Burns effects on each generated panel.
+
 ## API Endpoints
 
 | Method | Path | Description |
@@ -133,7 +150,11 @@ Every user gets an auto-generated character sheet with:
 | POST | `/api/onboard` | Process resume/background, generate character sheet + flat mirror |
 | POST | `/api/coaching/panel` | Run 3-coach panel on user input |
 | POST | `/api/coaching/synthesize` | Extract career throughline from conversation history |
-| POST | `/api/tts` | Text-to-speech with distinct coach voices (Cloud TTS) |
+| POST | `/api/coaching/extract-star` | Extract STAR elements for live whiteboard |
+| POST | `/api/coaching/storyboard` | Generate interleaved text+image career storyboard |
+| POST | `/api/tts` | Text-to-speech with distinct coach voices (Gemini native TTS) |
+| POST | `/api/whiteboard/analyze` | Canvas screenshot → AI drawing commands |
+| GET | `/api/live/config` | Gemini Live API config for client-side WebSocket |
 | POST | `/api/skills/analyze` | Analyze skills from text |
 
 ## Project Structure
@@ -141,10 +162,11 @@ Every user gets an auto-generated character sheet with:
 ```
 career-mode-live/
 +-- backend/
-|   +-- main.py                 # FastAPI app
+|   +-- main.py                 # FastAPI app (all endpoints)
 |   +-- app/
-|   |   +-- gemini_service.py   # Gemini client wrapper
-|   |   +-- coaching_panel.py   # Multi-agent orchestration
+|   |   +-- gemini_service.py   # Gemini client (text, JSON, TTS, image)
+|   |   +-- coaching_panel.py   # Multi-agent orchestration + storyboard
+|   |   +-- whiteboard_service.py # Canvas analysis → drawing commands
 |   |   +-- personas.py         # 3 coach persona definitions
 |   |   +-- skill_analyzer.py   # Heuristic skill analysis
 |   |   +-- resume_parser.py    # Text resume parser
@@ -152,14 +174,24 @@ career-mode-live/
 |   +-- Dockerfile
 +-- frontend/
 |   +-- src/
-|   |   +-- app/page.tsx        # Main page
+|   |   +-- app/
+|   |   |   +-- page.tsx              # Main coaching page
+|   |   |   +-- whiteboard/page.tsx   # DrawTogether canvas
 |   |   +-- components/
 |   |   |   +-- coaching-panel.tsx      # Core panel UI
+|   |   |   +-- draw-canvas.tsx         # SVG drawing canvas
+|   |   |   +-- drawing-toolbar.tsx     # Tool/color/size picker
+|   |   |   +-- ai-drawing-layer.tsx    # AI shape renderer (wobbly)
 |   |   |   +-- character-sheet-mini.tsx # RPG sidebar
+|   |   |   +-- career-trailer.tsx      # Cinematic storyboard player
 |   |   |   +-- onboarding.tsx          # Onboarding flow
-|   |   +-- hooks/use-voice.ts  # Web Speech API
-|   |   +-- stores/character-store.ts   # Zustand state
-|   |   +-- lib/api.ts          # Backend API client
+|   |   +-- hooks/
+|   |   |   +-- use-voice.ts           # Web Speech API
+|   |   |   +-- use-gemini-live.ts     # Gemini Live WebSocket
+|   |   +-- stores/
+|   |   |   +-- character-store.ts     # Coaching state
+|   |   |   +-- canvas-store.ts        # Drawing state
+|   |   +-- lib/api.ts                 # Backend API client
 |   +-- Dockerfile
 +-- docker-compose.yml
 +-- run.sh
@@ -168,8 +200,12 @@ career-mode-live/
 
 ## Built With
 
-- [Gemini 2.0 Flash](https://ai.google.dev/) -- Google's fastest multimodal model
+- [Gemini 2.5 Flash](https://ai.google.dev/) -- Text coaching, JSON structured output, canvas analysis
+- [Gemini 2.5 Flash Image](https://ai.google.dev/) -- Interleaved text + image storyboard generation
+- [Gemini Live API](https://ai.google.dev/) -- Real-time bidirectional voice + vision WebSocket
+- [Gemini Native TTS](https://ai.google.dev/) -- Per-coach voice synthesis (Kore, Puck, Enceladus)
 - [Google GenAI SDK](https://github.com/googleapis/python-genai) -- Official Python SDK
+- [perfect-freehand](https://github.com/steveruizok/perfect-freehand) -- Pressure-sensitive pen strokes
 - [FastAPI](https://fastapi.tiangolo.com/) -- Modern Python web framework
 - [Next.js](https://nextjs.org/) -- React framework
 - [Zustand](https://zustand-demo.pmnd.rs/) -- Lightweight state management

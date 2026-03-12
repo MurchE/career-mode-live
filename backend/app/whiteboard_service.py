@@ -9,6 +9,7 @@ that the frontend renders with hand-drawn animated strokes.
 import base64
 import json
 import logging
+from typing import Any
 
 from .gemini_service import get_client, MODEL
 
