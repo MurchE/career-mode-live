@@ -58,9 +58,9 @@ export function Onboarding() {
         {/* Coach Preview */}
         <div className="flex justify-center gap-6">
           {[
-            { name: 'Chad', title: 'The Roast Bro', color: 'text-chad', icon: 'C' },
-            { name: 'Dr. Reeves', title: 'Depth Therapist', color: 'text-reeves', icon: 'R' },
-            { name: 'Viktor', title: 'Tech Savant', color: 'text-viktor', icon: 'V' },
+            { name: 'Chad', title: 'The Roast Bro', color: 'text-chad', icon: 'C', angle: 'Cuts through the BS' },
+            { name: 'Dr. Reeves', title: 'Depth Therapist', color: 'text-reeves', icon: 'R', angle: 'Finds hidden patterns' },
+            { name: 'Viktor', title: 'Tech Savant', color: 'text-viktor', icon: 'V', angle: 'Builds the framework' },
           ].map((coach) => (
             <div key={coach.name} className="text-center space-y-2">
               <div className={`w-12 h-12 rounded-full bg-bg-tertiary border-2 border-border flex items-center justify-center ${coach.color} font-bold text-lg mx-auto`}>
@@ -69,17 +69,34 @@ export function Onboarding() {
               <div>
                 <div className={`text-sm font-semibold ${coach.color}`}>{coach.name}</div>
                 <div className="text-xs text-text-muted">{coach.title}</div>
+                <div className="text-[10px] text-text-muted mt-0.5 italic">{coach.angle}</div>
               </div>
             </div>
           ))}
         </div>
+
+        {/* What you'll get */}
+        {mode === 'choice' && (
+          <div className="flex justify-center gap-8 text-center">
+            {[
+              { label: 'Career Throughline', desc: 'Your authentic story' },
+              { label: 'Character Sheet', desc: 'RPG skill profile' },
+              { label: 'STAR Stories', desc: 'Interview-ready bullets' },
+            ].map((item) => (
+              <div key={item.label} className="text-xs font-mono">
+                <div className="text-text-secondary">{item.label}</div>
+                <div className="text-text-muted">{item.desc}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Mode Selection */}
         {mode === 'choice' && (
           <div className="space-y-4">
             <button
               onClick={() => setMode('resume')}
-              className="w-full p-4 rounded-lg bg-bg-secondary border border-border hover:border-accent-blue transition-colors text-left group"
+              className="w-full p-4 rounded-lg bg-bg-secondary border-2 border-accent-blue/30 hover:border-accent-blue transition-colors text-left group"
             >
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-lg bg-bg-tertiary flex items-center justify-center text-accent-blue group-hover:bg-accent-blue group-hover:text-bg-primary transition-colors">
@@ -91,8 +108,11 @@ export function Onboarding() {
                     <polyline points="10 9 9 9 8 9" />
                   </svg>
                 </div>
-                <div>
-                  <div className="font-semibold">Paste Resume / LinkedIn</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Paste Resume / LinkedIn</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-blue/20 text-accent-blue">recommended</span>
+                  </div>
                   <div className="text-sm text-text-secondary">Fastest way in. Copy-paste your resume text.</div>
                 </div>
               </div>

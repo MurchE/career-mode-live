@@ -112,3 +112,17 @@ body {
   50% { r: 6; opacity: 1; }
   100% { r: 4; opacity: 0.8; }
 }
+
+/* Synthesize button pulse glow */
+@keyframes synthesize-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(240, 136, 62, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(240, 136, 62, 0.4), 0 0 32px rgba(240, 136, 62, 0.1);
+  }
+}
+
+.synthesize-pulse {
+  animation: synthesize-glow 2s ease-in-out infinite;
+}

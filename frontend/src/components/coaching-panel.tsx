@@ -256,8 +256,8 @@ export function CoachingPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Phase indicator */}
-      <div className="px-6 py-2 border-b border-border bg-bg-secondary/50">
+      {/* Phase indicator — sticky at top */}
+      <div className="px-6 py-2 border-b border-border bg-bg-secondary/80 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             {['flat_mirror', 'provocation', 'free_discussion', 'synthesis'].map((phase) => (
@@ -282,7 +282,7 @@ export function CoachingPanel() {
             {canSynthesize && (
               <button
                 onClick={handleSynthesize}
-                className="px-3 py-1 text-xs font-mono rounded-full bg-[#F0883E]/15 text-[#F0883E] border border-[#F0883E]/30 hover:bg-[#F0883E]/25 transition-colors"
+                className="px-3 py-1 text-xs font-mono rounded-full bg-[#F0883E]/15 text-[#F0883E] border border-[#F0883E]/30 hover:bg-[#F0883E]/25 transition-colors synthesize-pulse"
               >
                 Synthesize Throughline
               </button>
