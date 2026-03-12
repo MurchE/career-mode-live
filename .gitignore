@@ -31,7 +31,6 @@ Thumbs.db
 # Docker
 *.log
 
-# uv
-uv.lock
+# uv (uv.lock tracked for reproducible Docker builds)
 tsconfig.tsbuildinfo
 .playwright-mcp/
