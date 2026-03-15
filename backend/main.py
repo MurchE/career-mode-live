@@ -16,9 +16,10 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from app.coaching_panel import run_panel, run_flat_mirror, run_provocation, run_narrative_synthesis, run_career_storyboard, extract_star_elements
+from starlette.responses import StreamingResponse
+from app.coaching_panel import run_panel, stream_panel, run_flat_mirror, run_provocation, run_narrative_synthesis, run_career_storyboard, extract_star_elements
 from app.skill_analyzer import analyze_skills_from_text
-from app.resume_parser import parse_resume_text
+from app.resume_parser import parse_resume_text, parse_pdf_bytes, parse_docx_bytes, fetch_linkedin_profile
 from app.gemini_service import get_client
 
 
@@ -157,6 +158,93 @@ async def onboard_user(req: OnboardingRequest):
         character_sheet=character_sheet,
         flat_mirror=flat_mirror,
         parsed_data=parsed,
+    )
+
+
+@app.post("/api/onboard/upload", response_model=OnboardingResponse)
+async def onboard_upload(file: UploadFile = File(...)):
+    """Process resume file upload (PDF or DOCX) and run onboarding."""
+    data = await file.read()
+    filename = (file.filename or "").lower()
+
+    if filename.endswith(".pdf"):
+        raw_text = parse_pdf_bytes(data)
+    elif filename.endswith(".docx") or filename.endswith(".doc"):
+        raw_text = parse_docx_bytes(data)
+    else:
+        # Try as plain text
+        raw_text = data.decode("utf-8", errors="replace")
+
+    if not raw_text.strip():
+        raise HTTPException(status_code=400, detail="Could not extract text from uploaded file.")
+
+    parsed = parse_resume_text(raw_text)
+    character_sheet = analyze_skills_from_text(parsed)
+    flat_mirror = await run_flat_mirror(raw_text)
+
+    return OnboardingResponse(
+        character_sheet=character_sheet,
+        flat_mirror=flat_mirror,
+        parsed_data=parsed,
+    )
+
+
+class LinkedInRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/onboard/linkedin", response_model=OnboardingResponse)
+async def onboard_linkedin(req: LinkedInRequest):
+    """Fetch a public LinkedIn profile URL and run onboarding from it."""
+    try:
+        raw_text = await fetch_linkedin_profile(req.url)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not fetch LinkedIn profile: {str(e)}. Try pasting your profile text instead.",
+        )
+
+    if not raw_text.strip() or len(raw_text.strip()) < 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not extract enough content from LinkedIn. LinkedIn may be blocking the request. Try pasting your profile text instead.",
+        )
+
+    parsed = parse_resume_text(raw_text)
+    character_sheet = analyze_skills_from_text(parsed)
+    flat_mirror = await run_flat_mirror(raw_text)
+
+    return OnboardingResponse(
+        character_sheet=character_sheet,
+        flat_mirror=flat_mirror,
+        parsed_data=parsed,
+    )
+
+
+@app.post("/api/coaching/panel/stream")
+async def coaching_panel_stream(req: PanelRequest):
+    """Stream coach responses one at a time via SSE.
+
+    Events:
+    - thinking: {coach_id, coach_name} — coach is generating
+    - coach_response: {coach_id, coach_name, response, color} — response ready
+    - done: {suggested_phase} — all coaches done
+    """
+    import json as _json
+
+    async def event_generator():
+        async for event in stream_panel(
+            user_input=req.user_input,
+            conversation_history=req.conversation_history,
+            character_sheet=req.character_sheet,
+            coaching_phase=req.coaching_phase,
+        ):
+            yield f"data: {_json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -396,6 +484,25 @@ async def whiteboard_analyze(req: WhiteboardAnalyzeRequest):
 # ---------------------------------------------------------------------------
 # Gemini Live API Key — for DrawTogether client-side WebSocket
 # ---------------------------------------------------------------------------
+
+@app.get("/api/coaches")
+async def get_coaches():
+    """Return coach metadata for frontend avatar rendering and Gemini Live sessions."""
+    from app.personas import PANEL_COACHES
+    from app.gemini_service import COACH_TTS_VOICES
+
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "title": c.title,
+            "color": c.color,
+            "voice": COACH_TTS_VOICES.get(c.id, "Kore"),
+            "system_prompt": c.system_prompt,
+        }
+        for c in PANEL_COACHES
+    ]
+
 
 @app.get("/api/live/config")
 async def live_config():

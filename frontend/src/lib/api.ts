@@ -80,8 +80,109 @@ export async function onboardUser(req: OnboardingRequest): Promise<OnboardingRes
   return apiPost<OnboardingResponse>('/api/onboard', req)
 }
 
+export async function onboardUpload(file: File): Promise<OnboardingResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch(`${API_BASE}/api/onboard/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const error = await res.text()
+    throw new Error(`Upload error ${res.status}: ${error}`)
+  }
+
+  return res.json()
+}
+
+export async function onboardLinkedIn(url: string): Promise<OnboardingResponse> {
+  return apiPost<OnboardingResponse>('/api/onboard/linkedin', { url })
+}
+
 export async function runPanel(req: PanelRequest): Promise<PanelResponse> {
   return apiPost<PanelResponse>('/api/coaching/panel', req)
+}
+
+/**
+ * Stream panel responses via SSE — coaches respond one at a time.
+ */
+export async function streamPanel(
+  req: PanelRequest,
+  callbacks: {
+    onThinking: (coachId: string, coachName: string) => void
+    onCoachResponse: (response: CoachResponse) => void
+    onDone: (suggestedPhase: string | null) => void
+    onError: (error: Error) => void
+  }
+): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/api/coaching/panel/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+
+    if (!res.ok) {
+      throw new Error(`Stream error ${res.status}`)
+    }
+
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop()!
+
+      for (const part of parts) {
+        if (part.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(part.slice(6))
+            switch (data.type) {
+              case 'thinking':
+                callbacks.onThinking(data.coach_id, data.coach_name)
+                break
+              case 'coach_response':
+                callbacks.onCoachResponse({
+                  coach_id: data.coach_id,
+                  coach_name: data.coach_name,
+                  response: data.response,
+                  color: data.color,
+                })
+                break
+              case 'done':
+                callbacks.onDone(data.suggested_phase)
+                break
+            }
+          } catch {
+            // Skip malformed SSE events
+          }
+        }
+      }
+    }
+  } catch (err) {
+    callbacks.onError(err instanceof Error ? err : new Error('Stream failed'))
+  }
+}
+
+export interface CoachMeta {
+  id: string
+  name: string
+  title: string
+  color: string
+  voice: string
+  system_prompt: string
+}
+
+export async function getCoaches(): Promise<CoachMeta[]> {
+  const res = await fetch(`${API_BASE}/api/coaches`)
+  return res.json()
 }
 
 // Narrative Synthesis — the payoff moment

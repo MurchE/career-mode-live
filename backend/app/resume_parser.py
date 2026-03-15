@@ -1,10 +1,14 @@
-"""Basic resume text parser — extracts structured data from plain text.
+"""Resume parser — extracts structured data from text, PDF, DOCX, or LinkedIn URL.
 
-For the hackathon MVP, we accept plain text input (pasted resume or spoken intro).
-No PDF/DOCX parsing needed since voice-first.
+Supports:
+- Plain text (pasted resume or spoken intro)
+- PDF file upload (via PyMuPDF)
+- DOCX file upload (via python-docx)
+- LinkedIn public profile URL (via httpx scraping)
 """
 
 import re
+import io
 from typing import Dict, Any, List
 
 
@@ -30,6 +34,16 @@ def _extract_name(text: str) -> str:
         return match.group(1).strip()
 
     lines = text.strip().split("\n")
+
+    # Try "Name - Title" or "Name | Title" pattern on first line
+    first_line = lines[0].strip() if lines else ""
+    for sep in [" - ", " – ", " — ", " | ", " · "]:
+        if sep in first_line:
+            candidate = first_line.split(sep)[0].strip()
+            if candidate and len(candidate.split()) <= 4 and not any(c.isdigit() for c in candidate):
+                if "@" not in candidate and "http" not in candidate.lower():
+                    return candidate
+
     for line in lines[:5]:
         line = line.strip()
         if line and len(line.split()) <= 4 and not any(c.isdigit() for c in line):
@@ -37,7 +51,6 @@ def _extract_name(text: str) -> str:
                 return line
 
     # Try extracting name from "Name, Title at Company" pattern
-    first_line = lines[0].strip() if lines else ""
     if "," in first_line:
         candidate = first_line.split(",")[0].strip()
         if candidate and len(candidate.split()) <= 3 and not any(c.isdigit() for c in candidate):
@@ -134,3 +147,72 @@ def _extract_skills(text: str) -> List[str]:
     """Extract recognized skills from text."""
     text_lower = text.lower()
     return [s for s in COMMON_SKILLS if s in text_lower]
+
+
+def parse_pdf_bytes(data: bytes) -> str:
+    """Extract text from PDF file bytes using PyMuPDF."""
+    import pymupdf
+    doc = pymupdf.open(stream=data, filetype="pdf")
+    pages = []
+    for page in doc:
+        pages.append(page.get_text())
+    doc.close()
+    return "\n".join(pages).strip()
+
+
+def parse_docx_bytes(data: bytes) -> str:
+    """Extract text from DOCX file bytes using python-docx."""
+    from docx import Document
+    doc = Document(io.BytesIO(data))
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(paragraphs).strip()
+
+
+async def fetch_linkedin_profile(url: str) -> str:
+    """Fetch text content from a public LinkedIn profile URL.
+
+    LinkedIn aggressively blocks scrapers, so this uses httpx with a
+    browser-like user agent. Falls back to Gemini to extract career info
+    if raw HTML is returned.
+    """
+    import httpx
+
+    # Normalize URL
+    url = url.strip()
+    if not url.startswith("http"):
+        url = "https://" + url
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+
+    html = resp.text
+
+    # Extract meaningful text from LinkedIn HTML
+    # Strip script/style tags, then extract text
+    html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<[^>]+>', ' ', html)
+    html = re.sub(r'\s+', ' ', html).strip()
+
+    # LinkedIn public profiles have useful meta content even when blocked
+    # Try to extract og:title, og:description from original response
+    og_parts = []
+    og_title = re.search(r'og:title["\s]+content="([^"]+)"', resp.text)
+    og_desc = re.search(r'og:description["\s]+content="([^"]+)"', resp.text)
+    if og_title:
+        og_parts.append(og_title.group(1))
+    if og_desc:
+        og_parts.append(og_desc.group(1))
+
+    if og_parts:
+        return "\n".join(og_parts) + "\n\n" + html[:3000]
+
+    # Return whatever text we got (capped)
+    return html[:5000] if html else "Could not extract content from LinkedIn profile."

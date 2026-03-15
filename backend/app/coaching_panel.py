@@ -117,6 +117,75 @@ async def run_panel(
     return responses
 
 
+async def stream_panel(
+    user_input: str,
+    conversation_history: list[dict] | None = None,
+    character_sheet: dict | None = None,
+    coaching_phase: str = "free_discussion",
+):
+    """Yield coach responses one at a time as they complete via SSE.
+
+    Yields JSON event dicts with type: 'thinking', 'coach_response', or 'done'.
+    """
+    conversation_history = conversation_history or []
+    responses = []
+
+    provocation_addendum = ""
+    if coaching_phase == "provocation":
+        provocation_addendum = """
+
+PROVOCATION MODE: The user just pushed back on a deliberately generic career summary.
+Their pushback is THE SIGNAL — the emotion, the specifics they correct, the stories they
+tell to prove the summary wrong. Your job is to seize on that signal and probe DEEPER.
+Ask the question that will surface the REAL story.
+Focus on specifics: numbers, names, moments of crisis, the thing they're proud of
+that no job description would capture. Be provocative but constructive.
+Keep it to 2-3 sentences — sharp, targeted.
+If the user mentions something impressive casually, CATCH IT and push for the full story."""
+
+    for i, coach in enumerate(PANEL_COACHES):
+        # Signal which coach is thinking
+        yield {"type": "thinking", "coach_id": coach.id, "coach_name": coach.name}
+
+        if provocation_addendum:
+            # Provocation mode: modify system prompt
+            context = _build_context_block(
+                user_input=user_input,
+                conversation_history=conversation_history,
+                character_sheet=character_sheet,
+                prior_coach_responses=responses,
+            )
+            response_text = await generate(
+                prompt=context,
+                system_instruction=coach.system_prompt + provocation_addendum,
+                temperature=0.85,
+                max_tokens=200,
+            )
+            resp = {
+                "coach_id": coach.id,
+                "coach_name": coach.name,
+                "response": response_text.strip(),
+                "color": coach.color,
+            }
+        else:
+            resp = await _get_coach_response(
+                coach=coach,
+                user_input=user_input,
+                conversation_history=conversation_history,
+                character_sheet=character_sheet,
+                prior_coach_responses=responses,
+            )
+
+        responses.append(resp)
+        yield {"type": "coach_response", **resp}
+
+    # Determine suggested phase
+    history_len = len(conversation_history)
+    suggested = "provocation" if history_len < 4 else "free_discussion"
+
+    yield {"type": "done", "suggested_phase": suggested}
+
+
 async def run_flat_mirror(resume_text: str) -> str:
     """Generate a deliberately flat, generic career mirror.
 
@@ -249,9 +318,9 @@ Return ONLY valid JSON, no markdown fences."""
 
     response_text = await generate_json(
         prompt=prompt,
-        system_instruction="You are an expert career narrative analyst. Return a JSON object with throughline, evidence, reframe, and positioning_statement fields.",
+        system_instruction="You are an expert career narrative analyst. Return a JSON object with throughline, evidence, reframe, positioning_statement, power_bullets, and target_roles fields.",
         temperature=0.7,
-        max_tokens=500,
+        max_tokens=2000,
     )
 
     try:

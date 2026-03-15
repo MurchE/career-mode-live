@@ -28,6 +28,13 @@ interface CharacterState {
   roundCount: number
   narrativeSynthesis: NarrativeResponse | null
 
+  // Coach states (for avatar animations)
+  thinkingCoachId: string | null
+  coachStates: Record<string, 'idle' | 'thinking' | 'speaking'>
+
+  // Gemini Live 1:1 session
+  liveSessionCoachId: string | null
+
   // STAR Whiteboard
   starElements: StarElement[]
 
@@ -37,12 +44,17 @@ interface CharacterState {
   setCoachingPhase: (phase: string) => void
   addUserMessage: (content: string) => void
   addCoachResponses: (responses: CoachResponse[]) => void
+  addSingleCoachResponse: (response: CoachResponse) => void
+  setThinkingCoach: (coachId: string | null) => void
+  setCoachState: (coachId: string, state: 'idle' | 'thinking' | 'speaking') => void
+  incrementRound: () => void
   setLoading: (loading: boolean) => void
   updateCharacterSheet: (sheet: CharacterSheet) => void
   setNarrativeSynthesis: (narrative: NarrativeResponse) => void
   setStoryboard: (parts: StoryboardPart[]) => void
   addStarElements: (elements: StarElement[]) => void
   confirmStarElement: (id: string) => void
+  setLiveSession: (coachId: string | null) => void
 }
 
 export const useCharacterStore = create<CharacterState>((set, get) => ({
@@ -55,6 +67,9 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   isLoading: false,
   roundCount: 0,
   narrativeSynthesis: null,
+  thinkingCoachId: null,
+  coachStates: { chad: 'idle', reeves: 'idle', viktor: 'idle' },
+  liveSessionCoachId: null,
   starElements: [],
 
   setOnboarded: (sheet, flatMirror) =>
@@ -133,6 +148,50 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       ],
       roundCount: state.roundCount + 1,
     })),
+
+  addSingleCoachResponse: (response) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: `${response.coach_id}-${Date.now()}`,
+          type: 'coach' as const,
+          content: response.response,
+          coachId: response.coach_id,
+          coachName: response.coach_name,
+          color: response.color,
+          timestamp: Date.now(),
+        },
+      ],
+      conversationHistory: [
+        ...state.conversationHistory,
+        {
+          role: 'assistant',
+          content: response.response,
+          coach_name: response.coach_name,
+        },
+      ],
+    })),
+
+  setThinkingCoach: (coachId) =>
+    set((state) => ({
+      thinkingCoachId: coachId,
+      coachStates: {
+        ...Object.fromEntries(Object.keys(state.coachStates).map(k => [k, 'idle' as const])),
+        ...(coachId ? { [coachId]: 'thinking' as const } : {}),
+      },
+    })),
+
+  setCoachState: (coachId, coachState) =>
+    set((state) => ({
+      coachStates: { ...state.coachStates, [coachId]: coachState },
+    })),
+
+  incrementRound: () =>
+    set((state) => ({ roundCount: state.roundCount + 1 })),
+
+  setLiveSession: (coachId) =>
+    set({ liveSessionCoachId: coachId }),
 
   setLoading: (loading) => set({ isLoading: loading }),
 
